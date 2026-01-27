@@ -103,4 +103,5 @@ You can now execute the pipeline step-by-step:
 python step_1_speech_to_text.py
 python step_2_topic_segmentation.py
 ...
-python step_7_final_evaluation_and_report.py
+python step_7_final_evaluation_and_report.py<img width="541" height="796" alt="image" src="https://github.com/user-attachments/assets/533e91c8-c340-46f4-bd70-4e082361ed71" />
+
