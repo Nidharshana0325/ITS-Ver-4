@@ -1,0 +1,13 @@
+# Python cache
+__pycache__/
+*.pyc
+
+# Large model files
+models/*.gguf
+
+# Generated / runtime data
+data/input_audio.wav
+data/*.json
+
+# OS files
+.DS_Store
