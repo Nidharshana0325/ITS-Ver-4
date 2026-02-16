@@ -1,0 +1,12 @@
+Flask
+Flask-SocketIO
+python-socketio
+openai-whisper
+yt-dlp
+sentence-transformers
+scikit-learn
+numpy
+llama-cpp-python
+torch
+torchaudio
+reportlab

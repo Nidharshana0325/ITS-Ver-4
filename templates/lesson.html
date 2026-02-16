@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Video Tutor - Lesson</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <!-- Hamburger Menu -->
+    <button class="menu-toggle" id="menu-toggle">
+        <i class="fas fa-bars"></i>
+    </button>
+    
+    <div class="menu-overlay" id="menu-overlay"></div>
+    
+    <nav class="hamburger-menu" id="hamburger-menu">
+        <div class="menu-header">
+            <h3 class="menu-title">Navigation</h3>
+            <button class="close-menu" id="close-menu">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <div class="menu-nav">
+            <a href="/" class="menu-link">
+                <i class="fas fa-home"></i> Home
+            </a>
+            <a href="/lesson" class="menu-link active">
+                <i class="fas fa-chalkboard-teacher"></i> Lesson
+            </a>
+            <a href="/quiz" class="menu-link">
+                <i class="fas fa-clipboard-question"></i> Quiz
+            </a>
+            <a href="/report" class="menu-link">
+                <i class="fas fa-chart-line"></i> Report
+            </a>
+        </div>
+    </nav>
+
+    <div class="main-content">
+        <div class="container">
+            <div class="lesson-container">
+                <!-- Chalkboard Section (Left) -->
+                <div class="chalkboard-section" id="chalkboard-section">
+                    <div class="topic-header">
+                        <div class="topic-number" id="topic-number">Topic 1</div>
+                        <h2 class="topic-title" id="topic-title">Loading...</h2>
+                    </div>
+                    
+                    <div class="lesson-content">
+                        <div class="explanation-section">
+                            <h3 class="section-heading">Overview</h3>
+                            <div id="explanation-text"></div>
+                        </div>
+                        
+                        <div class="key-points-section">
+                            <h3 class="section-heading">Key Points</h3>
+                            <ul class="key-points" id="key-points">
+                                <!-- Key points will be inserted here -->
+                            </ul>
+                        </div>
+                        
+                        <div class="example-box" id="example-box" style="display: none;">
+                            <div class="example-label">Example</div>
+                            <div id="example-text"></div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Video & Interaction Section (Right) -->
+                <div class="video-section">
+                    <!-- Pause/Play Controls -->
+                    <div class="lesson-controls">
+                        <button class="control-btn" id="pause-play-btn">
+                            <i class="fas fa-pause"></i>
+                            <span id="control-text">Pause</span>
+                        </button>
+                    </div>
+                    
+                    <div class="video-container">
+                        <video id="teacher-video" controlslist="nodownload" disablePictureInPicture>
+                            <source src="/static/teacher_video.mp4" type="video/mp4">
+                            Your browser does not support the video tag.
+                        </video>
+                    </div>
+                    
+                    <div class="interaction-panel">
+                        <div class="understanding-check" id="understanding-check">
+                            <h3>Did you understand this topic?</h3>
+                            <div class="btn-group">
+                                <button class="btn btn-yes" id="btn-yes">
+                                    <i class="fas fa-check"></i> Yes, I understand
+                                </button>
+                                <button class="btn btn-no" id="btn-no">
+                                    <i class="fas fa-question"></i> I have a question
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <div class="doubt-section hidden" id="doubt-section">
+                            <h4>Ask Your Question</h4>
+                            
+                            <div class="input-method-tabs">
+                                <button class="method-tab active" data-method="type">
+                                    <i class="fas fa-keyboard"></i> Type
+                                </button>
+                                <button class="method-tab" data-method="speak">
+                                    <i class="fas fa-microphone"></i> Speak
+                                </button>
+                            </div>
+                            
+                            <div class="doubt-input-area">
+                                <div class="type-input">
+                                    <textarea 
+                                        class="doubt-textarea" 
+                                        id="doubt-text" 
+                                        placeholder="Type your question here..."
+                                    ></textarea>
+                                </div>
+                                
+                                <div class="speak-input hidden">
+                                    <button class="voice-record-btn" id="voice-record-btn">
+                                        <i class="fas fa-microphone"></i>
+                                        <span id="record-status">Click to start recording</span>
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            <button class="btn btn-primary btn-submit-doubt" id="submit-doubt">
+                                Submit Question
+                            </button>
+                            
+                            <div class="answer-box hidden" id="answer-box">
+                                <h4><i class="fas fa-comments"></i> Tutor's Answer:</h4>
+                                <div id="answer-text"></div>
+                                <button class="btn btn-primary mt-lg" id="continue-learning">
+                                    Continue Learning
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading Modal for Answer -->
+    <div class="progress-screen hidden" id="answer-loading">
+        <div class="progress-card">
+            <div class="progress-header">
+                <div class="progress-spinner"></div>
+                <h2 class="progress-title">Preparing Your Answer</h2>
+                <p class="progress-message">Making it easy for you to understand...</p>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <script src="{{ url_for('static', filename='js/lesson.js') }}"></script>
+</body>
+</html>

@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Video Tutor - Report</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <!-- Hamburger Menu -->
+    <button class="menu-toggle" id="menu-toggle">
+        <i class="fas fa-bars"></i>
+    </button>
+    
+    <div class="menu-overlay" id="menu-overlay"></div>
+    
+    <nav class="hamburger-menu" id="hamburger-menu">
+        <div class="menu-header">
+            <h3 class="menu-title">Navigation</h3>
+            <button class="close-menu" id="close-menu">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <div class="menu-nav">
+            <a href="/" class="menu-link">
+                <i class="fas fa-home"></i> Home
+            </a>
+            <a href="/lesson" class="menu-link">
+                <i class="fas fa-chalkboard-teacher"></i> Lesson
+            </a>
+            <a href="/quiz" class="menu-link">
+                <i class="fas fa-clipboard-question"></i> Quiz
+            </a>
+            <a href="/report" class="menu-link active">
+                <i class="fas fa-chart-line"></i> Report
+            </a>
+        </div>
+    </nav>
+
+    <div class="main-content">
+        <div class="container">
+            <div class="report-container">
+                <div class="report-header">
+                    <i class="fas fa-award" style="font-size: 4rem; margin-bottom: var(--spacing-md);"></i>
+                    <h1>Learning Report</h1>
+                    <p class="report-subtitle">Congratulations on completing your lesson!</p>
+                </div>
+                
+                <!-- Performance Summary -->
+                <div class="report-section">
+                    <h2><i class="fas fa-chart-bar"></i> Performance Summary</h2>
+                    <div class="stats-grid" id="performance-stats">
+                        <div class="stat-card">
+                            <div class="stat-value" id="total-topics">0</div>
+                            <div class="stat-label">Topics Covered</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value" id="quiz-score">0%</div>
+                            <div class="stat-label">Quiz Score</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value" id="questions-answered">0</div>
+                            <div class="stat-label">Questions Answered</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value" id="time-spent">0m</div>
+                            <div class="stat-label">Time Spent</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Topics Learned -->
+                <div class="report-section">
+                    <h2><i class="fas fa-book"></i> Topics You Learned</h2>
+                    <ul class="topics-learned" id="topics-learned">
+                        <!-- Topics will be inserted here -->
+                    </ul>
+                </div>
+                
+                <!-- Strengths -->
+                <div class="report-section">
+                    <h2><i class="fas fa-star"></i> Your Strengths</h2>
+                    <ul class="strengths-list" id="strengths-list">
+                        <!-- Strengths will be inserted here -->
+                    </ul>
+                </div>
+                
+                <!-- Areas for Improvement -->
+                <div class="report-section">
+                    <h2><i class="fas fa-lightbulb"></i> Areas for Improvement</h2>
+                    <ul class="improvements-list" id="improvements-list">
+                        <!-- Improvements will be inserted here -->
+                    </ul>
+                </div>
+                
+                <!-- Detailed Analysis -->
+                <div class="report-section">
+                    <h2><i class="fas fa-clipboard-list"></i> Detailed Analysis</h2>
+                    <div id="detailed-analysis" style="line-height: 1.8; color: var(--text-dark);">
+                        <!-- Detailed analysis will be inserted here -->
+                    </div>
+                </div>
+                
+                <!-- Recommendations -->
+                <div class="report-section">
+                    <h2><i class="fas fa-compass"></i> Study Recommendations</h2>
+                    <div class="recommendations" id="recommendations">
+                        <!-- Recommendations will be inserted here -->
+                    </div>
+                </div>
+                
+                <!-- Descriptive Answer Feedback -->
+                <div class="report-section" id="descriptive-feedback-section" style="display: none;">
+                    <h2><i class="fas fa-comments"></i> Your Written Responses</h2>
+                    <div id="descriptive-feedback">
+                        <!-- Descriptive feedback will be inserted here -->
+                    </div>
+                </div>
+                
+                <!-- Actions -->
+                <div class="report-section" style="text-align: center;">
+                    <button class="btn btn-primary" id="download-notes" style="background: var(--accent-green); margin-bottom: var(--spacing-md);">
+                        <i class="fas fa-file-alt"></i> Download Lesson Notes
+                    </button>
+                    
+                    <button class="btn btn-primary btn-download-report" id="download-report">
+                        <i class="fas fa-download"></i> Download Performance Report
+                    </button>
+                    
+                    <button class="btn btn-primary" id="start-new-lesson" style="background: var(--primary-blue); margin-top: var(--spacing-md);">
+                        <i class="fas fa-play"></i> Start New Lesson
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading Modal -->
+    <div class="progress-screen hidden" id="report-loading">
+        <div class="progress-card">
+            <div class="progress-header">
+                <div class="progress-spinner"></div>
+                <h2 class="progress-title">Generating Your Report</h2>
+                <p class="progress-message">Analyzing your performance...</p>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/report.js') }}"></script>
+</body>
+</html>

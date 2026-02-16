@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Video Tutor - Quiz</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <!-- Hamburger Menu -->
+    <button class="menu-toggle" id="menu-toggle">
+        <i class="fas fa-bars"></i>
+    </button>
+    
+    <div class="menu-overlay" id="menu-overlay"></div>
+    
+    <nav class="hamburger-menu" id="hamburger-menu">
+        <div class="menu-header">
+            <h3 class="menu-title">Navigation</h3>
+            <button class="close-menu" id="close-menu">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <div class="menu-nav">
+            <a href="/" class="menu-link">
+                <i class="fas fa-home"></i> Home
+            </a>
+            <a href="/lesson" class="menu-link">
+                <i class="fas fa-chalkboard-teacher"></i> Lesson
+            </a>
+            <a href="/quiz" class="menu-link active">
+                <i class="fas fa-clipboard-question"></i> Quiz
+            </a>
+            <a href="/report" class="menu-link">
+                <i class="fas fa-chart-line"></i> Report
+            </a>
+        </div>
+    </nav>
+
+    <div class="main-content">
+        <div class="container">
+            <div class="quiz-container">
+                <div class="quiz-header">
+                    <h1>Assessment Time</h1>
+                    <div class="difficulty-badge" id="difficulty-badge">Easy</div>
+                    <div class="quiz-progress" id="quiz-progress">Question 1 of 3</div>
+                </div>
+                
+                <div class="question-card" id="question-card">
+                    <div class="question-number" id="question-number">Question 1</div>
+                    <h2 class="question-text" id="question-text">Loading question...</h2>
+                    
+                    <ul class="options-list" id="options-list">
+                        <!-- Options will be inserted here -->
+                    </ul>
+                    
+                    <div class="feedback-box hidden" id="feedback-box">
+                        <!-- Single feedback for correct answers -->
+                    </div>
+                    
+                    <div class="feedback-container hidden" id="feedback-container">
+                        <div class="feedback-wrong-box">
+                            <h4><i class="fas fa-times-circle"></i> Why Your Answer is Incorrect</h4>
+                            <p id="wrong-explanation"></p>
+                        </div>
+                        
+                        <div class="feedback-correct-box">
+                            <h4><i class="fas fa-check-circle"></i> The Correct Answer</h4>
+                            <p id="correct-explanation"></p>
+                        </div>
+                    </div>
+                    
+                    <div class="quiz-actions">
+                        <button class="btn btn-primary" id="submit-answer" disabled>
+                            Submit Answer
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Level Complete Card -->
+                <div class="question-card hidden" id="level-complete-card">
+                    <div style="text-align: center;">
+                        <div class="welcome-icon" style="margin: 0 auto var(--spacing-lg);">
+                            <i class="fas fa-trophy"></i>
+                        </div>
+                        <h2 id="level-result-title">Level Complete!</h2>
+                        <p id="level-result-message" style="font-size: 1.25rem; margin: var(--spacing-lg) 0; color: var(--text-muted);"></p>
+                        
+                        <div class="stats-grid" style="margin: var(--spacing-xl) 0;">
+                            <div class="stat-card">
+                                <div class="stat-value" id="level-score">0%</div>
+                                <div class="stat-label">Score</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-value" id="level-correct">0</div>
+                                <div class="stat-label">Correct</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-value" id="level-total">0</div>
+                                <div class="stat-label">Total</div>
+                            </div>
+                        </div>
+                        
+                        <div id="remediation-section" class="hidden" style="text-align: left; background: rgba(245, 158, 11, 0.1); padding: var(--spacing-lg); border-radius: 12px; margin: var(--spacing-lg) 0;">
+                            <h3 style="color: #f59e0b; margin-bottom: var(--spacing-md);">
+                                <i class="fas fa-book-open"></i> Review These Concepts
+                            </h3>
+                            <div id="remediation-content"></div>
+                        </div>
+                        
+                        <button class="btn btn-primary" id="continue-quiz">
+                            Continue to Next Level
+                        </button>
+                        
+                        <button class="btn btn-primary hidden" id="retry-level">
+                            <i class="fas fa-redo"></i> Retry This Level
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Descriptive Questions -->
+                <div class="question-card hidden" id="descriptive-card">
+                    <div style="text-align: center; margin-bottom: var(--spacing-xl);">
+                        <div class="welcome-icon" style="margin: 0 auto var(--spacing-lg); background: linear-gradient(135deg, #8b5cf6, #ec4899);">
+                            <i class="fas fa-pen"></i>
+                        </div>
+                        <h2>Final Evaluation</h2>
+                        <p style="color: var(--text-muted); font-size: 1.125rem;">Show us what you've learned in your own words</p>
+                    </div>
+                    
+                    <div id="descriptive-questions">
+                        <!-- Descriptive questions will be inserted here -->
+                    </div>
+                    
+                    <button class="btn btn-primary" id="submit-descriptive">
+                        Submit Final Answers
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading Modal -->
+    <div class="progress-screen hidden" id="evaluation-loading">
+        <div class="progress-card">
+            <div class="progress-header">
+                <div class="progress-spinner"></div>
+                <h2 class="progress-title" id="loading-title">Evaluating Your Answer</h2>
+                <p class="progress-message" id="loading-message">We hope you've performed well...</p>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/quiz.js') }}"></script>
+</body>
+</html>
