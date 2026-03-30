@@ -1,113 +1,91 @@
+"""
+STEP 1 — Speech to Text
+────────────────────────
+Transcribes YouTube URLs or local audio/video files using OpenAI Whisper.
+Produces word-level timestamps for precise sync with board/mindmap.
+
+Output: data/transcript.json
+  Each segment: { start, end, text, words: [{word, start, end}] }
+"""
+
 import whisper
 import json
 import subprocess
 from pathlib import Path
 import sys
 
-# =========================
-# PATH SETUP
-# =========================
-
-DATA_DIR = Path("data")
+DATA_DIR   = Path("data")
 DATA_DIR.mkdir(exist_ok=True)
-
 AUDIO_PATH = DATA_DIR / "input_audio.wav"
-OUTPUT_PATH = DATA_DIR / "transcript.json"
+OUTPUT     = DATA_DIR / "transcript.json"
 
 
-# =========================
-# DOWNLOAD AUDIO (FIXED)
-# =========================
-
-def download_youtube_audio(url: str):
-    """
-    Downloads BEST audio from YouTube and converts to WAV.
-    This avoids DASH video-only streams and Whisper FFmpeg pipe errors.
-    """
-    print("⬇️ Downloading YouTube audio...")
-
-    command = [
-        "yt-dlp",
-        "-f", "bestaudio",
-        "--extract-audio",
-        "--audio-format", "wav",
+def download_youtube(url: str):
+    print("⬇️  Downloading YouTube audio...")
+    subprocess.run([
+        "yt-dlp", "-f", "bestaudio",
+        "--extract-audio", "--audio-format", "wav",
         "--audio-quality", "0",
-        "-o", str(AUDIO_PATH),
-        url
-    ]
-
-    subprocess.run(command, check=True)
-    print("✅ Audio downloaded successfully")
+        "-o", str(AUDIO_PATH), url
+    ], check=True)
+    print("✅ Audio downloaded")
 
 
-# =========================
-# TRANSCRIBE AUDIO
-# =========================
-
-def transcribe_audio(audio_path: Path):
-    print("🧠 Loading Whisper model...")
-    model = whisper.load_model("small")  # accurate + stable on CPU
-
-    print("📝 Transcribing audio (this may take a few minutes)...")
+def transcribe(audio_path: Path):
+    print("🧠 Loading Whisper model (small)...")
+    model = whisper.load_model("small")
+    print("📝 Transcribing with word timestamps...")
 
     result = model.transcribe(
         str(audio_path),
-        verbose=False
+        verbose=False,
+        word_timestamps=True   # enables per-word timing
     )
 
     segments = []
     for seg in result["segments"]:
+        words = []
+        for w in seg.get("words", []):
+            words.append({
+                "word":  w["word"].strip(),
+                "start": round(w["start"], 3),
+                "end":   round(w["end"],   3),
+            })
         segments.append({
             "start": round(seg["start"], 2),
-            "end": round(seg["end"], 2),
-            "text": seg["text"].strip()
+            "end":   round(seg["end"],   2),
+            "text":  seg["text"].strip(),
+            "words": words,
         })
 
-    with open(OUTPUT_PATH, "w", encoding="utf-8") as f:
+    with open(OUTPUT, "w", encoding="utf-8") as f:
         json.dump(segments, f, indent=2, ensure_ascii=False)
 
-    print("✅ Transcription complete!")
-    print(f"📄 Saved transcript to: {OUTPUT_PATH}")
+    total_words = sum(len(s["words"]) for s in segments)
+    print(f"✅ Transcript saved → {OUTPUT}")
+    print(f"   {len(segments)} segments | {total_words} words with timestamps")
 
-
-# =========================
-# MAIN ENTRY
-# =========================
 
 def main():
-    print(
-        "\nChoose input type:\n"
-        "1. YouTube link\n"
-        "2. Local audio/video file\n"
-    )
-
+    print("\n=== STEP 1: Speech to Text ===\n")
+    print("Choose input:\n  1. YouTube link\n  2. Local audio/video file\n")
     choice = input("Enter 1 or 2: ").strip()
 
     if choice == "1":
-        url = input("Enter YouTube URL: ").strip()
-        download_youtube_audio(url)
-
+        url = input("YouTube URL: ").strip()
+        download_youtube(url)
     elif choice == "2":
-        local_path = Path(input("Enter local file path: ").strip())
-
-        if not local_path.exists():
-            print("❌ File not found.")
-            sys.exit(1)
-
-        # Copy local file to expected location
-        AUDIO_PATH.write_bytes(local_path.read_bytes())
-        print("✅ Local file copied")
-
+        path = Path(input("Local file path: ").strip())
+        if not path.exists():
+            print("❌ File not found."); sys.exit(1)
+        import shutil
+        shutil.copy(path, AUDIO_PATH)
+        print("✅ File copied")
     else:
-        print("❌ Invalid choice.")
-        sys.exit(1)
+        print("❌ Invalid choice."); sys.exit(1)
 
-    transcribe_audio(AUDIO_PATH)
+    transcribe(AUDIO_PATH)
 
-
-# =========================
-# RUN
-# =========================
 
 if __name__ == "__main__":
     main()

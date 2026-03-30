@@ -1,0 +1,1438 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>EduAI — Smart Classroom</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Caveat:wght@400;600;700&family=DM+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<style>
+/* ═══ TOKENS ═══════════════════════════════════════════════════════════════ */
+:root{
+  --bg0:#07090a;--bg1:#0b0f10;--bg2:#0f1417;
+  --board-bg:#0c2418;--board-bg2:#0f2d1e;--board-hi:#13382a;
+  --frame1:#3b1f06;--frame2:#5a3212;--frame3:#7d4a1a;
+  --g1:#22c55e;--g2:#4ade80;--g3:#86efac;
+  --gold:#fbbf24;--cyan:#22d3ee;--sky:#38bdf8;--violet:#a78bfa;
+  --text:#e8f4ed;--text2:#9db8a6;
+  --muted:rgba(157,184,166,.38);
+  --br:rgba(34,197,94,.13);--br2:rgba(34,197,94,.07);
+  --r:14px;--sh:0 20px 48px rgba(0,0,0,.75);
+  --topbar:56px;--gap:9px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;overflow:hidden;background:var(--bg0);font-family:"DM Sans",sans-serif;color:var(--text)}
+body{background:radial-gradient(ellipse 200% 100% at 50% -8%,#0d2216,var(--bg0) 90%)}
+
+/* ═══ TOPBAR ═══════════════════════════════════════════════════════════════ */
+#topbar{height:var(--topbar);display:flex;align-items:center;gap:12px;padding:0 18px;
+  background:rgba(5,8,9,.98);border-bottom:1px solid var(--br);
+  backdrop-filter:blur(20px);flex-shrink:0;z-index:40}
+.logo{display:flex;align-items:center;gap:9px;font-weight:800;font-size:1.05rem;color:var(--g2)}
+.logo-gem{width:32px;height:32px;border-radius:9px;
+  background:linear-gradient(135deg,#22c55e,#0891b2,#7c3aed);
+  display:flex;align-items:center;justify-content:center;font-size:.85rem}
+#topic-bar{flex:1;font-size:.72rem;font-weight:600;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--muted)}
+#topic-bar span{color:var(--g3);font-weight:800}
+.tbtn{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);
+  border-radius:9px;padding:6px 13px;color:var(--muted);font-size:.76rem;
+  cursor:pointer;font-weight:700;transition:all .15s}
+.tbtn:hover{border-color:var(--br);color:var(--text);background:rgba(34,197,94,.06)}
+.tbtn.hi{background:rgba(34,197,94,.1);border-color:rgba(34,197,94,.28);color:var(--g2)}
+#menu-btn{background:none;border:none;color:var(--text);font-size:1.4rem;cursor:pointer;padding:0 6px}
+.hbadge{border-radius:30px;padding:5px 11px;font-size:.76rem;font-weight:800}
+.hbadge.xp{background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.25);color:var(--gold)}
+#lives{display:flex;gap:3px;font-size:.9rem}
+
+/* ═══ SIDEBAR ══════════════════════════════════════════════════════════════ */
+#sb-ov{position:fixed;inset:0;background:rgba(0,0,0,.6);backdrop-filter:blur(4px);z-index:90;display:none}
+#sb-ov.on{display:block}
+#sidebar{position:fixed;top:0;left:0;bottom:0;width:290px;
+  background:linear-gradient(170deg,#0f1a14,#0a120e);
+  border-right:2px solid var(--br);box-shadow:var(--sh);z-index:100;
+  transform:translateX(-100%);transition:transform .28s ease;display:flex;flex-direction:column}
+#sidebar.open{transform:translateX(0)}
+.sb-head{padding:18px 16px;border-bottom:1px solid var(--br2);
+  display:flex;align-items:center;justify-content:space-between}
+.sb-head h2{font-size:1rem;font-weight:800;color:var(--g2);display:flex;align-items:center;gap:8px}
+#sb-close{background:rgba(255,255,255,.05);border:none;color:var(--muted);
+  width:32px;height:32px;border-radius:7px;cursor:pointer;font-size:1rem}
+#sb-close:hover{background:rgba(255,255,255,.1);color:var(--text)}
+.sb-stats{padding:12px 18px;background:rgba(0,0,0,.2);
+  display:flex;justify-content:space-around;border-bottom:1px solid var(--br2)}
+.sstat{display:flex;flex-direction:column;align-items:center}
+.sstat-v{font-size:1.25rem;font-weight:800;color:var(--g2)}
+.sstat-l{font-size:.65rem;color:var(--muted);text-transform:uppercase}
+#topic-list{flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:7px}
+#topic-list::-webkit-scrollbar{width:4px}
+#topic-list::-webkit-scrollbar-thumb{background:rgba(255,255,255,.14);border-radius:4px}
+.ti{background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.05);
+  border-radius:11px;padding:13px;cursor:pointer;transition:all .18s}
+.ti:hover{background:rgba(34,197,94,.05);border-color:rgba(34,197,94,.2)}
+.ti.active{background:rgba(34,197,94,.08);border-color:var(--g1);box-shadow:0 0 0 1px var(--g1)}
+.ti-idx{font-size:.65rem;font-weight:800;color:var(--muted);
+  letter-spacing:.1em;text-transform:uppercase;margin-bottom:3px}
+.ti-title{font-size:.88rem;font-weight:700;color:var(--text);margin-bottom:4px}
+.ti-badge{display:inline-block;margin-top:4px;padding:2px 8px;
+  border-radius:20px;font-size:.65rem;font-weight:700}
+.ti-badge.ns{background:rgba(251,113,133,.15);border:1px solid rgba(251,113,133,.3);color:#fda4af}
+.ti-badge.ip{background:rgba(251,191,36,.15);border:1px solid rgba(251,191,36,.3);color:#fde68a}
+.ti-badge.dn{background:rgba(34,197,94,.15);border:1px solid rgba(34,197,94,.3);color:var(--g3)}
+.ti-prog{height:3px;background:rgba(255,255,255,.07);border-radius:3px;margin-top:7px;overflow:hidden}
+.ti-prog-f{height:100%;background:var(--g1);width:0%;transition:width .3s}
+
+/* ═══ LAYOUT ════════════════════════════════════════════════════════════════ */
+#app{display:flex;flex-direction:column;height:100vh}
+#classroom{flex:1;display:grid;
+  grid-template-columns:52fr 48fr;
+  grid-template-rows:46fr 54fr;
+  gap:var(--gap);padding:var(--gap);
+  min-height:0;height:calc(100vh - var(--topbar))}
+.panel{border:1px solid var(--br);border-radius:var(--r);
+  display:flex;flex-direction:column;overflow:hidden;
+  min-height:0;background:var(--bg1);box-shadow:0 6px 18px rgba(0,0,0,.3)}
+.pbar{display:flex;align-items:center;justify-content:space-between;
+  padding:7px 13px;border-bottom:1px solid var(--br2);
+  flex-shrink:0;background:rgba(0,0,0,.18)}
+.ptitle{display:flex;align-items:center;gap:6px;
+  font-size:.65rem;font-weight:800;letter-spacing:.12em;text-transform:uppercase}
+.pdot{width:7px;height:7px;border-radius:50%;box-shadow:0 0 6px currentColor}
+.pbtn{width:24px;height:24px;border-radius:6px;background:rgba(255,255,255,.05);border:none;
+  color:rgba(255,255,255,.38);cursor:pointer;font-size:.7rem;
+  display:inline-flex;align-items:center;justify-content:center;transition:all .14s}
+.pbtn:hover{background:rgba(255,255,255,.14);color:var(--text)}
+
+/* ═══ CHALKBOARD ════════════════════════════════════════════════════════════ */
+#board-panel{grid-column:1;grid-row:1;background:transparent;border:none;box-shadow:none}
+#board-frame{width:100%;height:100%;
+  background:linear-gradient(158deg,var(--frame3),var(--frame2) 42%,var(--frame1));
+  border-radius:var(--r);padding:9px 9px 16px;
+  box-shadow:var(--sh),inset 0 1px 0 rgba(255,255,255,.07);
+  display:flex;flex-direction:column;overflow:hidden}
+#btop{display:flex;align-items:center;justify-content:space-between;padding:2px 7px 7px}
+#blabel{font-family:"Caveat",cursive;font-size:1.25rem;font-weight:700;
+  color:var(--cyan);text-shadow:0 0 14px rgba(34,211,238,.5)}
+#bsurface{flex:1;border-radius:9px;
+  background:linear-gradient(152deg,var(--board-hi),var(--board-bg2) 52%,var(--board-bg));
+  padding:10px 14px;position:relative;overflow:hidden;
+  box-shadow:inset 0 0 60px rgba(0,0,0,.55);display:flex;flex-direction:column;min-height:0}
+#bsurface::before{content:"";position:absolute;inset:10px 12px;
+  background:repeating-linear-gradient(transparent,transparent 38px,
+    rgba(255,255,255,.032) 38px,rgba(255,255,255,.032) 39px);
+  pointer-events:none}
+/* items fill available height — NO scroll */
+#board-lines{position:relative;z-index:2;flex:1;min-height:0;
+  display:flex;flex-direction:column;justify-content:space-evenly;overflow:hidden}
+.bl{font-family:"Caveat",cursive;line-height:1.3;
+  display:flex;align-items:baseline;flex-shrink:0;
+  opacity:0;transition:opacity .5s ease}
+.bl.visible{opacity:1}
+.bl-bullet{flex-shrink:0;margin-right:7px;font-size:.9rem;opacity:.8}
+.bl-txt{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+#btray{position:absolute;bottom:0;left:7%;right:7%;height:12px;
+  background:linear-gradient(180deg,#6b4218,#4a2c0a);border-radius:0 0 4px 4px;
+  display:flex;align-items:center;padding-left:7px;gap:5px}
+.chalk-piece{height:6px;border-radius:3px;opacity:.9}
+
+/* ═══ TEACHER VIDEO ══════════════════════════════════════════════════════════ */
+#teacher-panel{grid-column:2;grid-row:1}
+#teacher-body{flex:1;position:relative;overflow:hidden;background:#000}
+#tvid{width:100%;height:100%;object-fit:cover;object-position:center top}
+#teacher-body::after{content:"";position:absolute;inset:0;pointer-events:none;z-index:1;
+  background:
+    linear-gradient(to top,rgba(7,9,10,.9) 0%,rgba(7,9,10,.08) 28%,transparent 50%),
+    linear-gradient(to right,rgba(7,9,10,.18) 0%,transparent 18%),
+    linear-gradient(to left,rgba(7,9,10,.18) 0%,transparent 18%)}
+#teacher-top{position:absolute;top:0;left:0;right:0;z-index:5;padding:9px 14px;
+  background:linear-gradient(to bottom,rgba(5,7,8,.55),transparent);
+  display:flex;justify-content:space-between;align-items:center}
+.live-badge{display:flex;align-items:center;gap:5px;
+  font-size:.6rem;font-weight:800;letter-spacing:.13em;
+  text-transform:uppercase;color:var(--gold)}
+.live-dot{width:6px;height:6px;border-radius:50%;background:var(--gold);
+  box-shadow:0 0 7px var(--gold);animation:ld 1.1s ease infinite alternate}
+@keyframes ld{to{opacity:.22}}
+#transport{position:absolute;bottom:62px;left:50%;transform:translateX(-50%);z-index:6;
+  display:flex;align-items:center;gap:9px;background:rgba(0,0,0,.72);
+  backdrop-filter:blur(16px);border:1px solid rgba(255,255,255,.14);border-radius:50px;
+  padding:7px 18px;opacity:0;transition:opacity .22s;pointer-events:none}
+#teacher-body:hover #transport{opacity:1;pointer-events:auto}
+.tc{width:36px;height:36px;border-radius:50%;
+  background:rgba(255,255,255,.09);border:1px solid rgba(255,255,255,.18);
+  color:rgba(255,255,255,.82);cursor:pointer;font-size:.82rem;
+  display:flex;align-items:center;justify-content:center;transition:all .13s}
+.tc:hover{background:rgba(255,255,255,.2);color:#fff}
+.tc.big{width:44px;height:44px;font-size:.95rem;
+  background:rgba(34,197,94,.28);border-color:rgba(34,197,94,.48);color:var(--g2)}
+.tc.big:hover{background:rgba(34,197,94,.42)}
+#speed-sel{background:rgba(255,255,255,.09);border:1px solid rgba(255,255,255,.16);
+  color:rgba(255,255,255,.82);font-size:.7rem;font-weight:700;
+  border-radius:7px;padding:3px 7px;cursor:pointer;outline:none}
+#speed-sel option{background:#0f1417}
+#pause-ov{position:absolute;inset:0;cursor:pointer;z-index:4;
+  display:flex;align-items:center;justify-content:center}
+#pause-icon{width:70px;height:70px;border-radius:50%;background:rgba(0,0,0,.68);
+  border:2px solid rgba(255,255,255,.26);backdrop-filter:blur(10px);
+  display:flex;align-items:center;justify-content:center;font-size:1.8rem;
+  opacity:0;transform:scale(.65);transition:all .2s;pointer-events:none}
+#pause-ov:hover #pause-icon,#pause-ov.paused #pause-icon{opacity:1;transform:scale(1)}
+#paused-banner{position:absolute;top:12px;left:50%;transform:translateX(-50%);
+  background:rgba(0,0,0,.84);border:1px solid rgba(255,255,255,.2);
+  backdrop-filter:blur(12px);border-radius:30px;padding:6px 20px;
+  font-size:.75rem;font-weight:800;color:rgba(255,255,255,.82);display:none;z-index:7}
+#paused-banner.on{display:block}
+/* subtitles: one sentence, fades in each time */
+#subtitles{position:absolute;bottom:12px;left:0;right:0;z-index:5;
+  padding:6px 14px;text-align:center;pointer-events:none}
+#sub-box{background:rgba(0,0,0,.78);backdrop-filter:blur(10px);
+  border-left:3px solid var(--g2);border-radius:10px;padding:8px 16px;
+  display:inline-block;max-width:94%;margin:0 auto;box-shadow:0 3px 12px rgba(0,0,0,.5)}
+#sub-txt{font-size:.94rem;font-weight:500;line-height:1.45;color:#fff;
+  text-shadow:0 1px 3px rgba(0,0,0,.8);min-height:1.35em}
+.sub-in{animation:subIn .3s ease}
+@keyframes subIn{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
+
+/* ═══ DIAGRAM ZOOM ═══════════════════════════════════════════════════════════ */
+#diag-panel{grid-column:1;grid-row:2}
+#diag-wrap{flex:1;position:relative;min-height:0;overflow:hidden;
+  background:linear-gradient(135deg,rgba(10,20,16,.92),rgba(7,12,10,.92))}
+#diag-zoom-controls{position:absolute;bottom:8px;right:8px;z-index:10;
+  display:flex;gap:4px;background:rgba(0,0,0,.55);
+  backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,.1);
+  border-radius:9px;padding:3px 5px}
+.dzoom{width:26px;height:26px;border-radius:6px;background:rgba(255,255,255,.07);
+  border:1px solid rgba(255,255,255,.14);color:rgba(255,255,255,.7);
+  cursor:pointer;font-size:.8rem;font-weight:700;
+  display:flex;align-items:center;justify-content:center;transition:all .13s;
+  font-family:"DM Sans",sans-serif}
+.dzoom:hover{background:rgba(34,197,94,.18);color:var(--g2);border-color:rgba(34,197,94,.35)}
+#diag-zoom-pct{font-size:.65rem;font-weight:700;color:var(--muted);
+  display:flex;align-items:center;padding:0 3px;min-width:34px;justify-content:center}
+/* Make diag-scroll support transform */
+#diag-scroll{position:absolute;inset:0;overflow:hidden;
+  display:flex;align-items:center;justify-content:center;padding:10px 14px}
+#diag-inner{transform-origin:center center;transition:transform .18s ease;
+  display:flex;align-items:center;justify-content:center;
+  width:100%;height:100%}
+#diag-inner svg{
+  height:100% !important;width:100% !important;
+  max-height:100%;display:block;
+  filter:drop-shadow(0 0 10px rgba(34,197,94,.12));
+}
+/* node fills */
+#diag-inner .node rect,
+#diag-inner .node circle,
+#diag-inner .node ellipse,
+#diag-inner .node polygon{
+  fill:rgba(14,116,144,.28)!important;
+  stroke:#22d3ee!important;stroke-width:1.8px!important}
+#diag-inner .nodeLabel,
+#diag-inner .node .label,
+#diag-inner span.nodeLabel{
+  color:#c8f0ff!important;font-family:"DM Sans",sans-serif!important;
+  font-size:12px!important;font-weight:500!important}
+#diag-inner .edgePath path{stroke:rgba(34,197,94,.6)!important;stroke-width:1.8px!important}
+#diag-inner .edgeLabel{background:rgba(5,8,9,.95)!important;
+  color:rgba(157,184,166,.9)!important;font-size:10px!important;
+  padding:3px 7px!important;border-radius:5px!important}
+#diag-inner .mindmap-node circle,
+#diag-inner .mindmap-node rect{fill:rgba(14,116,144,.28)!important;stroke:#22d3ee!important}
+#diag-inner .mindmap-node span{color:#c8f0ff!important;font-size:11px!important}
+/* status overlay — shown while loading or on error */
+#diag-status{position:absolute;inset:0;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:9px;
+  color:rgba(255,255,255,.22);font-size:.85rem;
+  background:inherit;z-index:3;pointer-events:none;
+  transition:opacity .3s}
+#diag-status.hidden{opacity:0;pointer-events:none}
+.spin{width:26px;height:26px;border:2px solid rgba(34,197,94,.15);
+  border-top-color:var(--g1);border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+#diag-pill{font-size:.6rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase;
+  padding:2px 9px;border-radius:20px;background:rgba(167,139,250,.18);
+  border:1px solid rgba(167,139,250,.38);color:#e2c5ff}
+
+/* ═══ RIGHT BOTTOM ═══════════════════════════════════════════════════════════ */
+#right-bot{grid-column:2;grid-row:2;display:flex;flex-direction:column;gap:var(--gap);
+  overflow:hidden;min-height:0}
+#tr-panel{flex-shrink:0;border:1px solid var(--br);border-radius:var(--r);
+  background:var(--bg1);overflow:hidden;transition:max-height .28s ease;max-height:42px}
+#tr-panel.open{max-height:160px}
+#tr-head{display:flex;align-items:center;justify-content:space-between;
+  padding:10px 13px;cursor:pointer}
+.tr-lbl{font-size:.65rem;font-weight:800;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--text2);display:flex;align-items:center;gap:6px}
+#tr-body{padding:0 13px 10px;overflow-y:auto;max-height:115px;
+  font-size:.8rem;line-height:1.7;color:var(--text2)}
+#tr-toggle{font-size:.65rem;color:var(--muted);transition:transform .28s}
+#tr-panel.open #tr-toggle{transform:rotate(180deg)}
+
+/* doubt chat */
+#doubt-panel{flex:1;border:1px solid var(--br);border-radius:var(--r);
+  background:var(--bg1);display:flex;flex-direction:column;overflow:hidden;min-height:0}
+#doubt-msgs{flex:1;overflow-y:auto;padding:9px 13px;
+  display:flex;flex-direction:column;gap:6px;min-height:0}
+#doubt-msgs::-webkit-scrollbar{width:4px}
+#doubt-msgs::-webkit-scrollbar-thumb{background:rgba(255,255,255,.13);border-radius:3px}
+.msg{max-width:94%;padding:8px 13px;border-radius:12px;
+  font-size:.8rem;line-height:1.55;animation:msgin .22s ease}
+@keyframes msgin{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+.msg.user{align-self:flex-end;
+  background:linear-gradient(135deg,rgba(28,86,196,.75),rgba(16,50,124,.75));
+  border:1px solid rgba(48,106,216,.3)}
+.msg.ai{align-self:flex-start;
+  background:linear-gradient(135deg,rgba(13,50,26,.95),rgba(8,32,16,.95));
+  border:1px solid rgba(34,197,94,.18)}
+.msg.sys{align-self:center;background:rgba(251,191,36,.1);
+  border:1px solid rgba(251,191,36,.18);color:var(--gold);font-size:.76rem;font-weight:700}
+#dcp{display:none;padding:9px 13px;border-top:1px solid var(--br2);
+  background:rgba(34,197,94,.04);text-align:center;flex-shrink:0}
+#dcp p{font-size:.8rem;color:var(--g3);margin-bottom:7px;font-weight:600}
+.dcp-btn{border:none;border-radius:9px;padding:6px 17px;
+  font-weight:800;font-size:.76rem;cursor:pointer;transition:all .14s}
+.dcp-yes{background:rgba(34,197,94,.18);border:1px solid rgba(34,197,94,.38);color:var(--g3)}
+.dcp-yes:hover{background:rgba(34,197,94,.32)}
+.dcp-no{background:rgba(251,191,36,.14);border:1px solid rgba(251,191,36,.28);
+  color:var(--gold);margin-left:7px}
+.dcp-no:hover{background:rgba(251,191,36,.28)}
+#doubt-input{padding:9px 11px;border-top:1px solid var(--br2);
+  display:flex;gap:7px;align-items:center;flex-shrink:0}
+#doubt-txt{flex:1;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.11);
+  border-radius:10px;padding:8px 13px;color:var(--text);font-size:.8rem;outline:none;
+  font-family:"DM Sans",sans-serif}
+#doubt-txt:focus{border-color:rgba(34,197,94,.38)}
+#mic-btn{width:38px;height:38px;border-radius:50%;
+  background:rgba(34,197,94,.14);border:1px solid rgba(34,197,94,.28);
+  color:var(--g2);cursor:pointer;font-size:.9rem;
+  display:flex;align-items:center;justify-content:center;transition:all .14s}
+#mic-btn:hover{background:rgba(34,197,94,.24)}
+#mic-btn.on{background:rgba(239,68,68,.22);border-color:rgba(239,68,68,.42);
+  color:#fda4a4;animation:mron .65s ease infinite alternate}
+@keyframes mron{to{box-shadow:0 0 12px rgba(239,68,68,.45)}}
+#ask-btn{background:linear-gradient(135deg,#14532d,#22c55e);border:none;
+  border-radius:10px;padding:8px 16px;color:#050a07;font-weight:800;
+  font-size:.8rem;cursor:pointer;transition:opacity .15s;white-space:nowrap}
+#ask-btn:hover{opacity:.85}
+#ask-btn:disabled{opacity:.3;cursor:default}
+
+/* ═══ TOAST ══════════════════════════════════════════════════════════════════ */
+#toast{position:fixed;bottom:24px;right:24px;background:rgba(5,8,9,.98);
+  border:1px solid var(--g1);border-radius:13px;padding:9px 20px;color:var(--text);
+  font-size:.8rem;font-weight:800;box-shadow:var(--sh);
+  opacity:0;transform:translateY(7px);transition:all .2s;pointer-events:none;z-index:200}
+#toast.on{opacity:1;transform:translateY(0)}
+::-webkit-scrollbar{width:4px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:rgba(255,255,255,.14);border-radius:3px}
+</style>
+</head>
+<body>
+<!-- sidebar overlay -->
+<div id="sb-ov" onclick="UI.closeSidebar()"></div>
+
+<!-- sidebar -->
+<div id="sidebar">
+  <div class="sb-head">
+    <h2>📋 Learning Path</h2>
+    <button id="sb-close" onclick="UI.closeSidebar()">✕</button>
+  </div>
+  <div class="sb-stats">
+    <div class="sstat"><span class="sstat-v" id="stat-total">0</span><span class="sstat-l">Topics</span></div>
+    <div class="sstat"><span class="sstat-v" id="stat-done">0</span><span class="sstat-l">Done</span></div>
+    <div class="sstat"><span class="sstat-v" id="stat-pct">0%</span><span class="sstat-l">Progress</span></div>
+  </div>
+  <div id="topic-list"><div style="color:var(--muted);text-align:center;padding:28px">Loading…</div></div>
+</div>
+
+<div id="app">
+  <div id="topbar">
+    <button id="menu-btn" onclick="UI.toggleSidebar()">☰</button>
+    <div class="logo"><div class="logo-gem">📚</div>EduAI</div>
+    <div id="topic-bar">Select a topic to begin</div>
+    <button class="tbtn hi" id="quiz-btn" style="display:none" onclick="UI.showQuiz()">✏️ Quiz</button>
+    <div class="hbadge xp" id="xp-badge">⭐ 0 XP</div>
+    <div id="lives">❤️❤️❤️</div>
+  </div>
+
+  <div id="classroom">
+
+    <!-- CHALKBOARD (top-left) -->
+    <div id="board-panel">
+      <div id="board-frame">
+        <div id="btop">
+          <div id="blabel">Key Points</div>
+          <div style="display:flex;gap:3px">
+            <button class="pbtn" title="Freeze board" onclick="Board.toggleFreeze()">✎</button>
+            <button class="pbtn" title="Clear board" onclick="Board.clear()">⊘</button>
+          </div>
+        </div>
+        <div id="bsurface">
+          <div id="board-lines">
+            <div class="bl visible" style="color:rgba(255,255,255,.13);font-size:1.1rem;justify-content:center">
+              <span class="bl-txt">Select a topic to begin…</span>
+            </div>
+          </div>
+        </div>
+        <div id="btray">
+          <div class="chalk-piece" style="width:18px;background:#f0ece0"></div>
+          <div class="chalk-piece" style="width:14px;background:#fbbf24"></div>
+          <div class="chalk-piece" style="width:16px;background:#22d3ee"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TEACHER VIDEO (top-right) -->
+    <div id="teacher-panel" class="panel">
+      <div id="teacher-top">
+        <div class="live-badge"><div class="live-dot"></div>LIVE LECTURE</div>
+        <div style="display:flex;gap:3px">
+          <button class="pbtn" title="Replay from start" onclick="Lesson.replay()">↺</button>
+          <button class="pbtn" title="Skip to end" onclick="Lesson.skip()">⏭</button>
+        </div>
+      </div>
+      <div id="teacher-body">
+        <video id="tvid" muted playsinline loop>
+          <source src="/static/teacher_video.mp4" type="video/mp4">
+        </video>
+        <div id="pause-ov" onclick="Lesson.toggle()">
+          <div id="pause-icon">▶</div>
+        </div>
+        <div id="paused-banner">⏸ PAUSED — click to resume</div>
+        <div id="transport">
+          <button class="tc" onclick="Lesson.seek(-10)">«10</button>
+          <button class="tc big" id="play-btn" onclick="Lesson.toggle()">▶</button>
+          <button class="tc" onclick="Lesson.seek(10)">10»</button>
+          <select id="speed-sel" onchange="Lesson.setSpeed(this.value)">
+            <option value="0.5">0.5×</option>
+            <option value="0.75">0.75×</option>
+            <option value="1" selected>1×</option>
+            <option value="1.25">1.25×</option>
+            <option value="1.5">1.5×</option>
+          </select>
+        </div>
+        <div id="subtitles">
+          <div id="sub-box"><div id="sub-txt"></div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CONCEPT MAP / DIAGRAM (bottom-left) -->
+    <div id="diag-panel" class="panel">
+      <div class="pbar">
+        <div class="ptitle" style="color:var(--violet)">
+          <div class="pdot" style="background:var(--violet)"></div>
+          <span>CONCEPT MAP</span>
+        </div>
+        <div style="display:flex;gap:5px;align-items:center">
+          <span id="diag-pill"></span>
+          <button class="pbtn" title="Redraw" onclick="Diagram.redraw()">↺</button>
+        </div>
+      </div>
+      <div id="diag-wrap">
+        <div id="diag-scroll">
+          <div id="diag-inner"></div>
+        </div>
+        <div id="diag-zoom-controls">
+          <button class="dzoom" onclick="DiagramZoom.out()" title="Zoom out">−</button>
+          <span id="diag-zoom-pct">100%</span>
+          <button class="dzoom" onclick="DiagramZoom.in()" title="Zoom in">+</button>
+          <button class="dzoom" onclick="DiagramZoom.reset()" title="Reset zoom">⊡</button>
+        </div>
+        <div id="diag-status">
+          <div style="font-size:1.8rem">🗺️</div>
+          <div>Diagram will appear when a topic loads</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TRANSCRIPT + DOUBT (bottom-right) -->
+    <div id="right-bot">
+      <div id="tr-panel">
+        <div id="tr-head" onclick="UI.toggleTranscript()">
+          <div class="tr-lbl">
+            <div class="pdot" style="background:var(--sky);box-shadow:0 0 5px var(--sky)"></div>
+            TRANSCRIPT
+          </div>
+          <div>
+            <span style="font-size:.65rem;color:var(--muted)" id="tr-info">Click to expand</span>
+            <span id="tr-toggle">▾</span>
+          </div>
+        </div>
+        <div id="tr-body"></div>
+      </div>
+
+      <div id="doubt-panel">
+        <div class="pbar">
+          <div class="ptitle" style="color:var(--cyan)">
+            <div class="pdot" style="background:var(--cyan)"></div>
+            ASK A DOUBT
+          </div>
+          <button class="pbtn" onclick="Chat.clear()">⊘</button>
+        </div>
+        <div id="doubt-msgs">
+          <div class="msg sys">🎤 Ask Lekha anything about this topic</div>
+        </div>
+        <div id="dcp">
+          <p>Did your doubt get cleared? 🤔</p>
+          <button class="dcp-btn dcp-yes" onclick="Chat.doubtCleared(true)">✅ Yes, resume lesson</button>
+          <button class="dcp-btn dcp-no" onclick="Chat.doubtCleared(false)">❓ Ask more</button>
+        </div>
+        <div id="doubt-input">
+          <input id="doubt-txt" placeholder="Type your doubt here…" autocomplete="off">
+          <button id="mic-btn" onclick="Mic.toggle()">🎤</button>
+          <button id="ask-btn" onclick="Chat.send()">Ask</button>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- #classroom -->
+</div><!-- #app -->
+<div id="toast"></div>
+
+<script>
+/*
+ * EduAI Classroom — Production JS
+ * ════════════════════════════════════════════════════════════════════════════
+ * Modules: State | Subtitle | TTS | Lesson | Board | Diagram | Chat | Mic | Topics | UI
+ *
+ * KEY ARCHITECTURE DECISIONS:
+ * 1. TTS speaks ONE sentence at a time using chained SpeechSynthesisUtterances.
+ *    When onend fires → advance index → show NEXT subtitle → speak NEXT sentence.
+ *    This guarantees subtitle ↔ audio perfect sync (no timers needed).
+ *
+ * 2. Video plays/pauses atomically with TTS. Both are always in the same state.
+ *
+ * 3. Speed changes cancel current utterance and restart it at new rate.
+ *
+ * 4. Diagram renders into #diag-scroll. SVG gets height:100% / width:auto
+ *    so it fills the panel height and scrolls horizontally if wider.
+ *
+ * 5. Doubt flow: pause lesson → stream answer → render board → speak answer
+ *    (video plays while speaking) → video pauses after answer → show dcp prompt.
+ */
+'use strict';
+const $ = id => document.getElementById(id);
+
+/* ════════════════════════════════════════════════════════════════════════════
+   STATE — single source of truth
+   ════════════════════════════════════════════════════════════════════════════ */
+const State = {
+  topics:      [],
+  curTopic:    null,
+  curId:       -1,
+  speed:       1.0,
+  isPlaying:   false,   // lesson is actively playing
+  completed:   new Set(),
+  inProgress:  new Set(),
+  xp:          0,
+  lives:       3,
+  wasPlayingBeforeDoubt: false,
+  boardItems:  [],      // current lesson board items (strings)
+};
+
+/* ════════════════════════════════════════════════════════════════════════════
+   SUBTITLE — shows one sentence at a time with fade-in
+   ════════════════════════════════════════════════════════════════════════════ */
+const Subtitle = {
+  show(text) {
+    const el = $('sub-txt');
+    el.classList.remove('sub-in');
+    void el.offsetWidth; // trigger reflow to restart animation
+    el.textContent = text || '';
+    if (text) el.classList.add('sub-in');
+  },
+  clear() { $('sub-txt').textContent = ''; },
+};
+
+/* ════════════════════════════════════════════════════════════════════════════
+   TTS — sentence-by-sentence chained utterances
+   Principle: speak sentence[i], onend → speak sentence[i+1]
+   This is the ONLY reliable way to sync subtitles with speech.
+   ════════════════════════════════════════════════════════════════════════════ */
+const TTS = (() => {
+  let voice = null;
+  let queue = [];         // array of {text, onEnd?}
+  let qIdx  = 0;
+  let live  = false;      // currently speaking
+
+  /* pick best Indian voice */
+  function _pickVoice() {
+    const vs = speechSynthesis.getVoices();
+    const pref = [
+      v => /Lekha|Neerja/i.test(v.name),
+      v => /Veena|Priya/i.test(v.name),
+      v => v.lang === 'en-IN',
+      v => v.lang.startsWith('en') && /female/i.test(v.name),
+      v => v.lang.startsWith('en'),
+    ];
+    for (const p of pref) { const f = vs.find(p); if (f) { voice = f; return; } }
+    voice = vs[0] || null;
+  }
+
+  function init() {
+    if (!window.speechSynthesis) return;
+    if (speechSynthesis.onvoiceschanged !== undefined)
+      speechSynthesis.onvoiceschanged = _pickVoice;
+    _pickVoice();
+  }
+
+  function _splitSentences(text) {
+    const parts = text.match(/[^.!?…]+[.!?…]+/g) || [text];
+    return parts.map(s => s.trim()).filter(Boolean);
+  }
+
+  /* speak a flat list of sentences, call onAllDone when finished */
+  function speakList(sentences, onAllDone, showSubtitles = true) {
+    stop();
+    if (!window.speechSynthesis || !sentences.length) {
+      if (onAllDone) onAllDone();
+      return;
+    }
+    live = true;
+    let idx = 0;
+
+    function next() {
+      if (!live || idx >= sentences.length) {
+        live = false;
+        if (onAllDone) onAllDone();
+        return;
+      }
+      const text = sentences[idx];
+      if (showSubtitles) Subtitle.show(text);
+
+      const u = new SpeechSynthesisUtterance(text);
+      u.rate   = State.speed * 0.93;
+      u.pitch  = 1.0;
+      u.volume = 1.0;
+      if (voice) u.voice = voice;
+
+      u.onend   = () => { idx++; next(); };
+      u.onerror = e  => {
+        if (e.error === 'interrupted' || e.error === 'canceled') return;
+        console.warn('TTS error:', e.error, '- skipping sentence');
+        idx++; next();
+      };
+      speechSynthesis.speak(u);
+    }
+    next();
+  }
+
+  /* speak arbitrary text (used by Chat / doubt prompts) */
+  function speakText(text, onDone, showSubs = true) {
+    speakList(_splitSentences(text), onDone, showSubs);
+  }
+
+  function stop() {
+    live = false;
+    if (window.speechSynthesis) speechSynthesis.cancel();
+  }
+
+  /* pause by stopping (Web Speech pause() is buggy on Chrome) */
+  function pause() { stop(); }
+
+  return { init, speakList, speakText, stop, pause,
+    splitSentences: _splitSentences,
+    get live() { return live; }
+  };
+})();
+
+/* ════════════════════════════════════════════════════════════════════════════
+   LESSON — controls video + TTS together, sentence by sentence
+   ════════════════════════════════════════════════════════════════════════════ */
+const Lesson = (() => {
+  let sentences = [];
+  let sentIdx   = 0;
+  let paused    = true;
+  let doneCb    = null;
+
+  function load(topic) {
+    stop();
+    sentences = TTS.splitSentences(topic.teacher_notes || '');
+    sentIdx   = 0;
+    paused    = true;
+  }
+
+  function toggle() {
+    if (State.isPlaying) _doPause();
+    else _doPlay();
+  }
+
+  function _doPlay() {
+    if (!sentences.length) return;
+    State.isPlaying = true;
+    paused = false;
+    _setPlayUI(true);
+    _vidPlay();
+    // Speak from sentIdx
+    TTS.speakList(sentences.slice(sentIdx), () => {
+      // all sentences done
+      if (!paused) _onLessonDone();
+    });
+  }
+
+  function _doPause() {
+    paused = true;
+    State.isPlaying = false;
+    _setPlayUI(false);
+    _vidPause();
+    TTS.pause();
+  }
+
+  function stop() {
+    paused = true;
+    State.isPlaying = false;
+    sentIdx = 0;
+    _setPlayUI(false);
+    _vidPause();
+    TTS.stop();
+    Subtitle.clear();
+  }
+
+  function replay() {
+    stop();
+    sentIdx = 0;
+    setTimeout(() => { paused = false; _doPlay(); }, 80);
+  }
+
+  function skip() {
+    stop();
+    sentIdx = sentences.length;
+    const last = sentences.at(-1);
+    if (last) Subtitle.show(last);
+  }
+
+  function seek(secs) {
+    const v = $('tvid');
+    if (isFinite(v.duration))
+      v.currentTime = Math.max(0, Math.min(v.duration, v.currentTime + secs));
+    toast((secs > 0 ? '⏩' : '⏪') + ' ' + Math.abs(secs) + 's');
+  }
+
+  function setSpeed(val) {
+    State.speed = parseFloat(val);
+    $('tvid').playbackRate = State.speed;
+    // If currently playing: stop TTS and restart from current sentIdx at new speed
+    if (State.isPlaying) {
+      TTS.stop();
+      setTimeout(() => {
+        TTS.speakList(sentences.slice(sentIdx), () => {
+          if (!paused) _onLessonDone();
+        });
+      }, 60);
+    }
+    toast('Speed: ' + val + '×');
+  }
+
+  function setOnDone(cb) { doneCb = cb; }
+
+  function _onLessonDone() {
+    paused = true;
+    State.isPlaying = false;
+    _setPlayUI(false);
+    _vidPause();
+    Subtitle.show('✨ Topic complete! Ask any doubts below.');
+    if (doneCb) doneCb();
+  }
+
+  /* video helpers */
+  function _vidPlay()  { const v=$('tvid'); v.playbackRate=State.speed; v.play().catch(()=>{}); }
+  function _vidPause() { $('tvid').pause(); }
+  /* called by Chat when speaking doubt answer (video plays without TTS lesson) */
+  function vidPlay()   { _vidPlay(); }
+  function vidPause()  { _vidPause(); }
+
+  function _setPlayUI(playing) {
+    $('play-btn').textContent   = playing ? '⏸' : '▶';
+    $('pause-icon').textContent = playing ? '⏸' : '▶';
+    if (playing) {
+      $('paused-banner').classList.remove('on');
+      $('pause-ov').classList.remove('paused');
+    } else {
+      $('paused-banner').classList.add('on');
+      $('pause-ov').classList.add('paused');
+    }
+  }
+
+  return { load, toggle, stop, replay, skip, seek, setSpeed, setOnDone, vidPlay, vidPause };
+})();
+
+/* ════════════════════════════════════════════════════════════════════════════
+   BOARD — renders chalkboard key points
+   All items are written immediately (no per-item delay except stagger opacity)
+   ════════════════════════════════════════════════════════════════════════════ */
+const Board = (() => {
+  const COLORS = ['#fbbf24','#22d3ee','#86efac','#fb923c','#e879f9','#38bdf8'];
+  let frozen = false;
+
+  function write(items) {
+    if (!items || !items.length || frozen) return;
+    clear(false);
+    const pts = items.slice(0, 6);
+    const el  = $('board-lines');
+    // font size based on item count so everything fits
+    const fs = pts.length <= 3 ? '1.25rem'
+             : pts.length <= 4 ? '1.1rem'
+             : pts.length <= 5 ? '1rem'
+             : '.88rem';
+
+    pts.forEach((text, i) => {
+      const row = document.createElement('div');
+      row.className = 'bl';
+      row.style.color      = COLORS[i % COLORS.length];
+      row.style.fontWeight = i === 0 ? '700' : '500';
+      row.style.fontSize   = fs;
+
+      const bul = document.createElement('span');
+      bul.className = 'bl-bullet';
+      bul.textContent = i === 0 ? '★' : '→';
+
+      const txt = document.createElement('span');
+      txt.className = 'bl-txt';
+      txt.textContent = text;
+
+      row.appendChild(bul);
+      row.appendChild(txt);
+      el.appendChild(row);
+
+      // staggered reveal (purely cosmetic, all content IS in DOM immediately)
+      setTimeout(() => row.classList.add('visible'),
+        i * Math.max(120, 500 / State.speed));
+    });
+  }
+
+  function clear(resetFrozen = true) {
+    $('board-lines').innerHTML = '';
+    if (resetFrozen) frozen = false;
+  }
+
+  function toggleFreeze() { frozen = !frozen; }
+
+  return { write, clear, toggleFreeze };
+})();
+
+/* ════════════════════════════════════════════════════════════════════════════
+   DIAGRAM — Mermaid rendering
+   FIX SUMMARY:
+   1. Render into a temporary detached div (avoids viewport sizing issues)
+   2. Inject resulting SVG into #diag-scroll
+   3. SVG: remove width/height attrs, set style height:100% width:auto
+   4. Force horizontal layout (LR) always
+   5. Sanitise problem node labels before render
+   6. Fallback builds a valid flowchart from board_notes
+   ════════════════════════════════════════════════════════════════════════════ */
+const Diagram = (() => {
+  let lastCode = '', lastType = '';
+  const PILL_LABELS = {
+    flowchart_lr:'↔ FLOW', flowchart_td:'⬇ PROCESS',
+    mindmap:'🕸 MIND MAP', timeline:'📅 TIMELINE',
+    quadrant:'⚖ COMPARE', classDiagram:'🏛 CLASS',
+  };
+
+  async function render(rawCode, type) {
+    if (!rawCode || rawCode.trim().length < 5) {
+      _fallback(type);
+      return;
+    }
+    lastCode = rawCode;
+    lastType = type;
+    _setLoading(true);
+
+    const code = _prepare(rawCode);
+
+    try {
+      // Generate unique ID to prevent mermaid cache collisions
+      const uid = 'mm' + Date.now();
+
+      // Render into isolated offscreen element (prevents sizing artifacts)
+      const tmp = document.createElement('div');
+      tmp.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1200px;height:400px;visibility:hidden;';
+      document.body.appendChild(tmp);
+
+      const { svg } = await mermaid.render(uid, code, tmp);
+      document.body.removeChild(tmp);
+
+      // Inject into the inner container (zoom wrapper)
+      const inner = $('diag-inner');
+      inner.innerHTML = svg;
+
+      // Fix SVG sizing: fill container, keep aspect ratio
+      const svgEl = inner.querySelector('svg');
+      if (svgEl) {
+        svgEl.removeAttribute('width');
+        svgEl.removeAttribute('height');
+        svgEl.style.cssText = [
+          'width:100%',
+          'height:100%',
+          'max-width:100%',
+          'max-height:100%',
+          'display:block',
+          'filter:drop-shadow(0 0 10px rgba(34,197,94,.12))',
+        ].join(';');
+      }
+
+      _setLoading(false);
+      $('diag-pill').textContent = PILL_LABELS[type] || 'DIAGRAM';
+
+    } catch (err) {
+      console.warn('Mermaid render error:', err.message || err);
+      _fallback(type);
+    }
+  }
+
+  /* Prepare mermaid code for rendering */
+  function _prepare(raw) {
+    let code = raw.trim();
+
+    // Strip markdown code fences
+    code = code.replace(/^```[a-z]*\n?/im, '').replace(/\n?```$/im, '').trim();
+
+    // Force horizontal layout on flowcharts
+    code = code.replace(/^(flowchart|graph)\s+TD\b/im, '$1 LR');
+
+    // Add header if missing
+    if (!/^(flowchart|graph|mindmap|sequenceDiagram|classDiagram|timeline|quadrantChart)/i.test(code)) {
+      code = 'flowchart LR\n' + code;
+    }
+
+    // Fix known single-word node labels that cause parse errors
+    const FIXES = {
+      Hence:'Water flows to land', Water:'Water cycle', From:'From rainfall',
+      Enters:'Water enters streams', Runoff:'Surface runoff', Flow:'Flows downhill',
+      Stream:'Streams form', River:'River flows', Cycle:'Natural cycle',
+      Evaporation:'Water evaporates', Condensation:'Clouds form',
+      Precipitation:'Rain falls', Collection:'Water collects',
+      Process:'The process', Step:'Next step', Start:'Start here', End:'Final step',
+      Input:'User input', Output:'Final output', Loop:'Repeat loop',
+    };
+    for (const [bad, good] of Object.entries(FIXES)) {
+      // Match [Word] ([ Word ] variations)
+      code = code.replace(new RegExp('\\[\\s*' + bad + '\\s*\\]', 'g'), '[' + good + ']');
+      code = code.replace(new RegExp('\\(\\s*' + bad + '\\s*\\)', 'g'), '(' + good + ')');
+    }
+
+    return code;
+  }
+
+  function _fallback(type) {
+    const t = State.curTopic;
+    if (!t) { _showMsg('Select a topic to see the diagram.'); return; }
+    const items = (t.board_notes || []).slice(0, 5);
+    if (!items.length) { _showMsg('No diagram data for this topic.'); return; }
+
+    const nodes  = items.map((c, i) => '  N' + i + '["'  + c.replace(/"/g, "'") + '"]').join('\n');
+    const arrows = items.slice(0, -1).map((_, i) => '  N' + i + ' --> N' + (i + 1)).join('\n');
+    const fb     = 'flowchart LR\n' + nodes + '\n' + arrows;
+
+    render(fb, 'flowchart_lr').catch(() => _showMsg('Diagram unavailable.'));
+  }
+
+  function _setLoading(on) {
+    const status = $('diag-status');
+    if (on) {
+      $('diag-inner').innerHTML = '';
+      DiagramZoom.reset();
+      status.innerHTML = '<div class="spin"></div><div>Rendering diagram…</div>';
+      status.classList.remove('hidden');
+    } else {
+      status.classList.add('hidden');
+    }
+  }
+
+  function _showMsg(msg) {
+    $('diag-inner').innerHTML = '';
+    const s = $('diag-status');
+    s.innerHTML = '<div style="font-size:1.6rem">🗺️</div><div>' + msg + '</div>';
+    s.classList.remove('hidden');
+  }
+
+  function redraw() {
+    if (lastCode) render(lastCode, lastType);
+    else _fallback(lastType);
+  }
+
+  return { render, redraw };
+})();
+
+/* ════════════════════════════════════════════════════════════════════════════
+   CHAT — doubt Q&A
+   Flow: send → pause lesson → fetch SSE → render board → stream text →
+         on done: play video + speak answer sentence-by-sentence →
+         after answer: pause video + show "did your doubt get cleared?" prompt
+   ════════════════════════════════════════════════════════════════════════════ */
+const Chat = (() => {
+  function send() {
+    const inp = $('doubt-txt');
+    const q   = inp.value.trim();
+    if (!q) return;
+    inp.value = '';
+    $('ask-btn').disabled = true;
+    $('dcp').style.display = 'none';
+
+    _msg(q, 'user');
+
+    // Pause lesson while answering
+    State.wasPlayingBeforeDoubt = State.isPlaying;
+    if (State.isPlaying) Lesson.toggle(); // pause
+
+    _fetch(q, _prep());
+  }
+
+  async function _fetch(q, prepId) {
+    try {
+      const res = await fetch('/api/ask', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ question: q, topic_id: State.curId, history: [] }),
+      });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+
+      _rmPrep(prepId);
+      const aiDiv = _msg('', 'ai');
+      let full = '', boardDone = false;
+      const reader = res.body.getReader();
+      const dec    = new TextDecoder();
+      let   buf    = '';
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+        const lines = buf.split('\n');
+        buf = lines.pop(); // keep incomplete line
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          try {
+            const ev = JSON.parse(line.slice(6));
+
+            if (ev.type === 'board' && !boardDone) {
+              boardDone = true;
+              // Write ALL board key-points immediately (no delay)
+              const pts = _extractPts(ev.items);
+              if (pts.length) Board.write(pts);
+              // Render doubt diagram if provided
+              if (ev.diagram && ev.diagram.mermaid)
+                Diagram.render(ev.diagram.mermaid, ev.diagram.type || 'mindmap');
+
+            } else if (ev.type === 'token') {
+              full += ev.token;
+              aiDiv.textContent = full;
+              $('doubt-msgs').scrollTop = 9e9;
+
+            } else if (ev.type === 'done') {
+              full = ev.full || full;
+              aiDiv.textContent = full.trim();
+              $('doubt-msgs').scrollTop = 9e9;
+              $('ask-btn').disabled = false;
+              // Speak the answer: video plays, subtitle shows each sentence
+              _speakAnswer(full.trim());
+            }
+          } catch { /* ignore malformed SSE lines */ }
+        }
+      }
+    } catch (err) {
+      console.warn('Chat error:', err);
+      _rmPrep(prepId);
+      $('ask-btn').disabled = false;
+      // Local fallback answer
+      const ans = _localAns(q);
+      _msg(ans, 'ai');
+      Board.write(_localPts());
+      _speakAnswer(ans);
+    }
+  }
+
+  function _speakAnswer(text) {
+    // Play video while speaking
+    Lesson.vidPlay();
+    TTS.speakText(text, () => {
+      // After answer finishes: pause video
+      Lesson.vidPause();
+      // After short gap, speak and show the "cleared?" prompt
+      setTimeout(() => {
+        $('dcp').style.display = 'block';
+        TTS.speakText('Did your doubt get cleared?', null, true);
+      }, 400);
+    }, true);
+  }
+
+  function _extractPts(items) {
+    if (!items || !items.length) return [];
+    return items.map(it => {
+      const raw = typeof it === 'string' ? it : (it.text || '');
+      return raw.replace(/^[★→•*\-]\s*/, '').trim();
+    }).filter(s => s.length > 1);
+  }
+
+  function _localAns(q) {
+    const t = State.curTopic;
+    if (!t) return 'Good question! Please review the topic notes.';
+    const notes = (t.teacher_notes || '').split('.').slice(0, 3).join('.').trim();
+    return 'Good question! ' + notes + '. Hope that helps!';
+  }
+
+  function _localPts() {
+    return (State.boardItems.length ? State.boardItems :
+      ['Review this topic', 'See key points', 'Ask more if needed']).slice(0, 4);
+  }
+
+  function doubtCleared(yes) {
+    $('dcp').style.display = 'none';
+    TTS.stop();
+    if (yes) {
+      _msg('Great! Resuming the lesson. 📚', 'sys');
+      // Restore lesson board
+      if (State.boardItems.length) Board.write(State.boardItems);
+      TTS.speakText('Great! Let us continue the lesson.', () => {
+        if (State.wasPlayingBeforeDoubt) Lesson.toggle();
+      }, true);
+    } else {
+      _msg('Sure! Type your next question below. 🙋', 'sys');
+    }
+  }
+
+  function clear() {
+    $('doubt-msgs').innerHTML = '<div class="msg sys">🎤 Ask Lekha anything about this topic</div>';
+    $('dcp').style.display = 'none';
+  }
+
+  function _msg(text, role) {
+    const d = document.createElement('div');
+    d.className = 'msg ' + role;
+    d.textContent = text;
+    $('doubt-msgs').appendChild(d);
+    $('doubt-msgs').scrollTop = 9e9;
+    return d;
+  }
+
+  function _prep() {
+    const id = 'prep' + Date.now();
+    const d  = document.createElement('div');
+    d.id = id; d.className = 'msg sys';
+    d.innerHTML = '📚 Lekha is thinking<span id="prep-dots">.</span>';
+    $('doubt-msgs').appendChild(d);
+    let n = 0;
+    d._iv = setInterval(() => {
+      const e = document.getElementById('prep-dots');
+      if (e) e.textContent = '.'.repeat(n++ % 3 + 1);
+    }, 450);
+    return id;
+  }
+
+  function _rmPrep(id) {
+    const e = document.getElementById(id);
+    if (e) { clearInterval(e._iv); e.remove(); }
+  }
+
+  return { send, doubtCleared, clear };
+})();
+
+/* ════════════════════════════════════════════════════════════════════════════
+   MIC
+   ════════════════════════════════════════════════════════════════════════════ */
+const Mic = (() => {
+  let rec = null, on = false;
+  function _init() {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) return false;
+    rec = new SR();
+    rec.continuous = false; rec.interimResults = false; rec.lang = 'en-IN';
+    rec.onresult = e => {
+      $('doubt-txt').value = e.results[0][0].transcript;
+      _stop(); Chat.send();
+    };
+    rec.onerror = rec.onend = _stop;
+    return true;
+  }
+  function toggle() {
+    if (!rec && !_init()) { toast('🎤 Mic not supported in this browser'); return; }
+    if (on) _stop();
+    else {
+      on = true;
+      $('mic-btn').classList.add('on');
+      $('mic-btn').textContent = '🔴';
+      try { rec.start(); } catch {}
+      toast('🎤 Listening…');
+    }
+  }
+  function _stop() {
+    on = false;
+    $('mic-btn').classList.remove('on');
+    $('mic-btn').textContent = '🎤';
+    try { rec && rec.stop(); } catch {}
+  }
+  return { toggle };
+})();
+
+/* ════════════════════════════════════════════════════════════════════════════
+   TOPICS — load list and individual topics
+   ════════════════════════════════════════════════════════════════════════════ */
+const Topics = (() => {
+  async function loadAll() {
+    try {
+      const r = await fetch('/api/topics');
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      State.topics = await r.json();
+      UI.renderSidebar();
+      $('topic-bar').innerHTML = '<span>' + State.topics.length + ' topics — select one to begin</span>';
+    } catch (e) {
+      $('topic-list').innerHTML =
+        '<div style="color:#fb7185;padding:24px;text-align:center;font-size:.85rem">'
+        + '⚠️ Could not connect to server<br><br>'
+        + '<code style="opacity:.6;font-size:.75rem">uvicorn app:app --port 8000</code></div>';
+    }
+  }
+
+  async function load(id) {
+    try {
+      const r = await fetch('/api/topic/' + id);
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const t = await r.json();
+
+      // Stop everything first
+      Lesson.stop();
+      TTS.stop();
+      Board.clear();
+      Subtitle.clear();
+      Chat.clear();
+      $('dcp').style.display = 'none';
+      $('tr-body').innerHTML  = '';
+      $('tr-info').textContent = 'Full transcript';
+
+      State.curTopic = t;
+      State.curId    = id;
+
+      // Normalise board items (always plain strings)
+      State.boardItems = _normBoard(t);
+
+      // Write key points to board immediately when topic loads
+      if (State.boardItems.length) {
+        Board.write(State.boardItems);
+      } else {
+        // Try to extract key points from teacher_notes as fallback
+        const notes = t.teacher_notes || t.teacher_speech || '';
+        const fallbackPts = notes.split(/[.\n]/).map(s => s.trim()).filter(s => s.length > 15).slice(0, 5);
+        if (fallbackPts.length) {
+          State.boardItems = fallbackPts;
+          Board.write(fallbackPts);
+        }
+      }
+
+      // Transcript
+      $('tr-body').innerText = t.teacher_notes || '';
+
+      // Update topbar
+      $('topic-bar').innerHTML = '<span>' + (t.topic_title || 'Topic ' + id) + '</span>';
+
+      // Prepare lesson TTS
+      Lesson.load(t);
+      Lesson.setOnDone(() => _onComplete(id));
+
+      // Render diagram IMMEDIATELY (this fixes "concept map empty" bug)
+      if (t.diagram && t.diagram.mermaid && t.diagram.mermaid.trim().length > 5) {
+        Diagram.render(t.diagram.mermaid, t.diagram.type || 'mindmap');
+      } else {
+        // Auto-build fallback from board_notes
+        _buildFallbackDiagram(t);
+      }
+
+      if (!State.completed.has(id)) State.inProgress.add(id);
+      UI.renderSidebar();
+      toast('📚 ' + (t.topic_title || 'Topic ') + ' — press ▶ to begin');
+
+    } catch (e) {
+      console.error('Topic load error:', e);
+      toast('⚠️ Failed to load topic — is the server running?');
+    }
+  }
+
+  function _buildFallbackDiagram(t) {
+    const items = (t.board_notes || []).slice(0, 5);
+    if (!items.length) return;
+    const nodes  = items.map((c, i) => '  N' + i + '["' + c.replace(/"/g,"'") + '"]').join('\n');
+    const arrows = items.slice(0,-1).map((_,i) => '  N' + i + ' --> N' + (i+1)).join('\n');
+    Diagram.render('flowchart LR\n' + nodes + '\n' + arrows, 'flowchart_lr');
+  }
+
+  function _normBoard(t) {
+    const raw = t.board_notes || t.board_content || [];
+    return raw.map(b => {
+      const s = typeof b === 'string' ? b : (b.text || '');
+      return s.replace(/^[★→•*\-]\s*/, '').trim();
+    }).filter(Boolean);
+  }
+
+  function _onComplete(id) {
+    if (!State.completed.has(id)) {
+      State.completed.add(id);
+      State.inProgress.delete(id);
+      State.xp += 50;
+      UI.updateHUD();
+      UI.renderSidebar();
+      toast('✅ Topic complete! +50 XP');
+    }
+  }
+
+  function switchTo(i) {
+    if (i < 0 || i >= State.topics.length) return;
+    load(State.topics[i].topic_id);
+    UI.closeSidebar();
+  }
+
+  return { loadAll, load, switchTo };
+})();
+
+/* ════════════════════════════════════════════════════════════════════════════
+   UI — sidebar, HUD, toasts, misc
+   ════════════════════════════════════════════════════════════════════════════ */
+const UI = (() => {
+  function renderSidebar() {
+    if (!State.topics.length) return;
+    const total = State.topics.length;
+    const done  = State.completed.size;
+    $('stat-total').textContent = total;
+    $('stat-done').textContent  = done;
+    $('stat-pct').textContent   = Math.round(done / total * 100) + '%';
+
+    // Update quiz button state
+    const qBtn = $('quiz-btn');
+    if (total > 0) {
+      qBtn.style.display = 'block';
+      if (done >= total) {
+        qBtn.textContent = '✏️ Start Quiz';
+        qBtn.classList.add('hi');
+        qBtn.style.background = 'rgba(34,197,94,.18)';
+        qBtn.style.borderColor = 'rgba(34,197,94,.4)';
+        qBtn.style.color = 'var(--g2)';
+      } else {
+        qBtn.textContent = '✏️ Quiz (' + done + '/' + total + ')';
+        qBtn.classList.remove('hi');
+        qBtn.style.background = '';
+        qBtn.style.borderColor = '';
+        qBtn.style.color = '';
+      }
+    }
+
+    $('topic-list').innerHTML = State.topics.map((t, i) => {
+      const active = t.topic_id === State.curId;
+      const done   = State.completed.has(t.topic_id);
+      const prog   = State.inProgress.has(t.topic_id);
+      const bc = done ? 'dn' : prog ? 'ip' : 'ns';
+      const bl = done ? '✅ Done' : prog ? '🟡 In Progress' : '🔴 Not Started';
+      const pw = done ? 100 : prog ? 50 : 0;
+      return '<div class="ti' + (active ? ' active' : '') + '" onclick="Topics.switchTo(' + i + ')">'
+        + '<div class="ti-idx">TOPIC ' + (i+1) + '</div>'
+        + '<div class="ti-title">' + (t.topic_title || 'Topic ' + (i+1)) + '</div>'
+        + '<div class="ti-badge ' + bc + '">' + bl + '</div>'
+        + '<div class="ti-prog"><div class="ti-prog-f" style="width:' + pw + '%"></div></div>'
+        + '</div>';
+    }).join('');
+  }
+
+  function updateHUD() {
+    $('xp-badge').textContent = '⭐ ' + State.xp + ' XP';
+    $('lives').innerHTML = [0,1,2].map(i =>
+      '<span style="opacity:' + (i < State.lives ? 1 : .18) + '">❤️</span>').join('');
+  }
+
+  function toggleSidebar()  { $('sidebar').classList.toggle('open'); $('sb-ov').classList.toggle('on'); }
+  function closeSidebar()   { $('sidebar').classList.remove('open'); $('sb-ov').classList.remove('on'); }
+  function toggleTranscript() { $('tr-panel').classList.toggle('open'); }
+  function showQuiz() {
+    const total = State.topics.length;
+    const done  = State.completed.size;
+    if (total === 0) { toast('⚠️ No topics loaded yet.'); return; }
+    if (done < total) {
+      const remaining = total - done;
+      toast('📚 Complete ' + remaining + ' more topic' + (remaining > 1 ? 's' : '') + ' to unlock quiz!', 3500);
+      return;
+    }
+    // All topics complete — navigate to quiz
+    window.location.href = '/quiz';
+  }
+
+  return { renderSidebar, updateHUD, toggleSidebar, closeSidebar, toggleTranscript, showQuiz };
+})();
+
+/* ════════════════════════════════════════════════════════════════════════════
+   DIAGRAM ZOOM — pinch/wheel/button zoom on concept map
+   ════════════════════════════════════════════════════════════════════════════ */
+const DiagramZoom = (() => {
+  let scale = 1.0;
+  const MIN = 0.3, MAX = 3.0, STEP = 0.2;
+
+  function _apply() {
+    const inner = $('diag-inner');
+    if (inner) inner.style.transform = 'scale(' + scale.toFixed(2) + ')';
+    const pct = $('diag-zoom-pct');
+    if (pct) pct.textContent = Math.round(scale * 100) + '%';
+  }
+
+  function zoomIn()  { scale = Math.min(MAX, scale + STEP); _apply(); }
+  function zoomOut() { scale = Math.max(MIN, scale - STEP); _apply(); }
+  function reset()   { scale = 1.0; _apply(); }
+
+  // Mouse wheel zoom on diagram panel
+  function init() {
+    const wrap = $('diag-wrap');
+    if (!wrap) return;
+    wrap.addEventListener('wheel', e => {
+      e.preventDefault();
+      if (e.deltaY < 0) zoomIn();
+      else zoomOut();
+    }, { passive: false });
+  }
+
+  return { in: zoomIn, out: zoomOut, reset, init };
+})();
+
+/* ════════════════════════════════════════════════════════════════════════════
+   TOAST
+   ════════════════════════════════════════════════════════════════════════════ */
+function toast(msg, dur = 2500) {
+  const e = $('toast');
+  e.textContent = msg;
+  e.classList.add('on');
+  clearTimeout(e._t);
+  e._t = setTimeout(() => e.classList.remove('on'), dur);
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+   INIT
+   ════════════════════════════════════════════════════════════════════════════ */
+document.addEventListener('DOMContentLoaded', () => {
+  mermaid.initialize({
+    startOnLoad:   false,
+    theme:         'dark',
+    securityLevel: 'loose',
+    themeVariables: {
+      background:          '#0b0f10',
+      mainBkg:             'rgba(14,116,144,.28)',
+      nodeBorder:          '#22d3ee',
+      lineColor:           'rgba(34,197,94,.65)',
+      clusterBkg:          'rgba(14,116,144,.12)',
+      edgeLabelBackground: '#07090a',
+      fontSize:            '13px',
+    },
+    flowchart: { useMaxWidth: false, htmlLabels: true, curve: 'basis' },
+    mindmap:   { useMaxWidth: false },
+  });
+
+  TTS.init();
+  DiagramZoom.init();
+  Topics.loadAll();
+  UI.updateHUD();
+
+  // Enter key in doubt box
+  $('doubt-txt').addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); Chat.send(); }
+  });
+});
+
+// Expose modules so HTML onclick handlers can call them
+Object.assign(window, { Lesson, Board, Diagram, DiagramZoom, Chat, Mic, Topics, UI, toast });
+</script>
+</body>
+</html>

@@ -1,1169 +1,543 @@
-from flask import Flask, render_template, request, jsonify, send_from_directory
-from flask_socketio import SocketIO, emit
-import os
-import json
-import threading
-import time
-from pathlib import Path
-import sys
-import subprocess
+"""
+app.py — EduAI Classroom Server
+════════════════════════════════════════════════════════════════════════
+Endpoints:
+  GET  /                        → classroom HTML (from templates/)
+  GET  /api/topics              → topic list (for sidebar)
+  GET  /api/topic/{id}          → full topic data
+  POST /api/ask                 → streaming doubt answer (SSE)
+  GET  /api/mcqs/{difficulty}   → MCQs (correct_index hidden from client)
+  POST /api/check_answer        → grade MCQ answer + teacher feedback
+  POST /api/descriptive         → evaluate written answer (4 criteria)
+  GET  /api/report              → final learning report JSON
+  GET  /api/quiz_results        → saved quiz results
+  GET  /api/health              → server status
 
-# Don't import the step modules directly - they execute on import
-# Instead, we'll use subprocess or import their functions carefully
-import whisper
-from sentence_transformers import SentenceTransformer
-from sklearn.metrics.pairwise import cosine_similarity
-import numpy as np
+Run: uvicorn app:app --reload --port 8000
+"""
+
+import json
+import asyncio
+import re
+from pathlib import Path
+
+from fastapi import FastAPI, HTTPException
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 from llama_cpp import Llama
 
-app = Flask(__name__)
-app.config['SECRET_KEY'] = 'ai-video-tutor-secret-key'
-app.config['UPLOAD_FOLDER'] = 'uploads'
-socketio = SocketIO(app, cors_allowed_origins="*")
+# ── Config ─────────────────────────────────────────────────────────────────────
+DATA_DIR     = Path("data")
+MODEL_PATH   = "models/Phi-3.5-mini-instruct-Q4_K_L.gguf"
+TEMPLATE_DIR = Path("templates")
+STATIC_DIR   = Path("static")
 
-DATA_DIR = Path("data")
-DATA_DIR.mkdir(exist_ok=True)
+app = FastAPI(title="EduAI Classroom")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-MODEL_PATH = "models/Phi-3.5-mini-instruct-Q4_K_L.gguf"
+if STATIC_DIR.exists():
+    app.mount("/static", StaticFiles(directory="static"), name="static")
 
-# Global storage for session data
-session_data = {}
+print("🧠 Loading Phi-3.5-mini-instruct…")
+llm = Llama(
+    model_path=MODEL_PATH,
+    n_ctx=2048,
+    n_threads=8,
+    temperature=0.3,
+    verbose=False,
+)
+print("✅ Model ready\n")
 
-# =========================
-# STEP 1: Speech to Text
-# =========================
 
-def download_youtube_audio(url: str, audio_path: Path):
+# ── RAG (optional — silently skips if store missing) ───────────────────────────
+def rag_context(query: str, n: int = 2) -> str:
+    """Retrieve relevant context from ChromaDB RAG store, or return empty string."""
+    rag_dir = DATA_DIR / "rag_store"
+    if not rag_dir.exists():
+        return ""
+    try:
+        import chromadb
+        from chromadb.utils import embedding_functions
+        client     = chromadb.PersistentClient(path=str(rag_dir))
+        embed_fn   = embedding_functions.DefaultEmbeddingFunction()
+        collection = client.get_or_create_collection("topics", embedding_function=embed_fn)
+        results    = collection.query(query_texts=[query], n_results=n)
+        docs       = results.get("documents", [[]])[0]
+        return "\n---\n".join(docs)
+    except Exception:
+        return ""
+
+
+# ── Helpers ────────────────────────────────────────────────────────────────────
+
+def load_json(path: Path):
+    if not path.exists():
+        return None
+    with open(path, encoding="utf-8") as f:
+        return json.load(f)
+
+
+def get_topic(topic_id: int):
+    data = load_json(DATA_DIR / "processed_topics.json") or []
+    return next((t for t in data if t["topic_id"] == topic_id), None)
+
+
+def phi_prompt(system: str, user: str) -> str:
+    """Phi-3.5-mini-instruct chat format."""
+    return f"<|system|>\n{system}\n<|end|>\n<|user|>\n{user}\n<|end|>\n<|assistant|>\n"
+
+
+def clean_board_items(items: list) -> list:
     """
-    Downloads BEST audio from YouTube and converts to WAV.
+    Normalise board items from LLM output.
+    Accepts:
+      - list of strings  → wraps into dicts
+      - list of dicts    → normalises color/text fields
+    Returns list of dicts: [{text, color, indent}]
     """
-    print("⬇️ Downloading YouTube audio...")
-    
-    command = [
-        "yt-dlp",
-        "-f", "bestaudio",
-        "--extract-audio",
-        "--audio-format", "wav",
-        "--audio-quality", "0",
-        "-o", str(audio_path),
-        url
-    ]
-    
-    try:
-        result = subprocess.run(command, check=True, capture_output=True, text=True)
-        print("✅ Audio downloaded successfully")
-    except subprocess.CalledProcessError as e:
-        print(f"❌ YouTube download failed: {e}")
-        print("💡 Tip: Try using the local file upload option instead!")
-        print("   Or install Node.js to fix YouTube downloads.")
-        raise Exception("YouTube download failed. Please try uploading a local video file instead, or install Node.js for YouTube support.")
+    COLORS  = ["yellow", "cyan", "lime", "orange", "white", "pink"]
+    PALETTE = set(COLORS)
+    result  = []
 
-def transcribe_audio_file(audio_path: Path, output_path: Path):
-    """Transcribe audio file using Whisper"""
-    print("🧠 Loading Whisper model...")
-    model = whisper.load_model("small")
-    
-    print("📝 Transcribing audio...")
-    result = model.transcribe(str(audio_path), verbose=False)
-    
-    segments = []
-    for seg in result["segments"]:
-        segments.append({
-            "start": round(seg["start"], 2),
-            "end": round(seg["end"], 2),
-            "text": seg["text"].strip()
-        })
-    
-    with open(output_path, "w", encoding="utf-8") as f:
-        json.dump(segments, f, indent=2, ensure_ascii=False)
-    
-    print("✅ Transcription complete!")
-    return segments
+    for i, item in enumerate(items):
+        if isinstance(item, str):
+            item = {"text": item, "color": COLORS[i % len(COLORS)], "indent": 0}
 
-def process_step1(video_source, source_type, session_id):
-    try:
-        socketio.emit('progress', {
-            'step': 1,
-            'message': 'Extracting audio from video...',
-            'status': 'processing'
-        }, to=session_id)
-        
-        AUDIO_PATH = DATA_DIR / "input_audio.wav"
-        OUTPUT_PATH = DATA_DIR / "transcript.json"
-        
-        if source_type == 'youtube':
-            download_youtube_audio(video_source, AUDIO_PATH)
-        else:
-            # Handle local file upload
-            local_path = Path(video_source)
-            if local_path.exists():
-                # Copy to working directory
-                import shutil
-                shutil.copy2(str(local_path), str(AUDIO_PATH))
-            else:
-                raise FileNotFoundError(f"File not found: {video_source}")
-        
-        socketio.emit('progress', {
-            'step': 1,
-            'message': 'Audio extracted! Starting transcription...',
-            'status': 'processing'
-        }, to=session_id)
-        
-        socketio.sleep(0)  # Allow socket to emit
-        
-        transcribe_audio_file(AUDIO_PATH, OUTPUT_PATH)
-        
-        socketio.emit('progress', {
-            'step': 1,
-            'message': 'Transcription complete!',
-            'status': 'complete'
-        }, to=session_id)
-        
-        return True
-    except Exception as e:
-        print(f"Error in step 1: {str(e)}")
-        socketio.emit('progress', {
-            'step': 1,
-            'message': f'Error: {str(e)}',
-            'status': 'error'
-        }, to=session_id)
-        return False
+        text = item.get("text", "").strip()
+        # Normalise bullet prefixes
+        if text.startswith("* "):
+            text = "★ " + text[2:]
+        elif text.startswith("- "):
+            text = "→ " + text[2:]
+        item["text"]  = text
+        item["color"] = item.get("color") if item.get("color") in PALETTE else COLORS[i % len(COLORS)]
+        item["indent"] = int(item.get("indent", 0))
+        result.append(item)
 
-# =========================
-# STEP 2: Topic Segmentation
-# =========================
+    return result
 
-def process_step2(session_id):
-    try:
-        socketio.emit('progress', {
-            'step': 2,
-            'message': 'Analyzing content and splitting into topics...',
-            'status': 'processing'
-        }, to=session_id)
-        
-        socketio.sleep(0)
-        
-        TRANSCRIPT_PATH = DATA_DIR / "transcript.json"
-        OUTPUT_PATH = DATA_DIR / "topics.json"
-        
-        with open(TRANSCRIPT_PATH, "r", encoding="utf-8") as f:
-            transcript = json.load(f)
-        
-        texts = [seg["text"] for seg in transcript]
-        
-        model = SentenceTransformer("all-MiniLM-L6-v2")
-        embeddings = model.encode(texts)
-        
-        # Topic segmentation logic (simplified from original)
-        topics = segment_topics(transcript, texts, embeddings)
-        
-        with open(OUTPUT_PATH, "w", encoding="utf-8") as f:
-            json.dump(topics, f, indent=2, ensure_ascii=False)
-        
-        socketio.emit('progress', {
-            'step': 2,
-            'message': f'Successfully split into {len(topics)} topics!',
-            'status': 'complete',
-            'data': {'topic_count': len(topics)}
-        }, to=session_id)
-        
-        return True
-    except Exception as e:
-        print(f"Error in step 2: {str(e)}")
-        socketio.emit('progress', {
-            'step': 2,
-            'message': f'Error: {str(e)}',
-            'status': 'error'
-        }, to=session_id)
-        return False
 
-def segment_topics(transcript, texts, embeddings):
-    """Simplified topic segmentation"""
-    SIMILARITY_THRESHOLD = 0.65
-    MIN_TOPIC_DURATION = 45
-    MAX_TOPIC_DURATION = 180
-    MIN_SENTENCE_LENGTH = 20
-    ROLLING_WINDOW = 3
-    LOW_SIMILARITY_PATIENCE = 2
-    MERGE_MIN_DURATION = 30
-    MERGE_MIN_COHERENCE = 0.4
-    
-    def rolling_embedding(embeds, window=ROLLING_WINDOW):
-        return np.mean(embeds[-window:], axis=0)
-    
-    def topic_duration(topic):
-        return topic["end"] - topic["start"]
-    
-    topics = []
-    current = {
-        "start": transcript[0]["start"],
-        "end": transcript[0]["end"],
-        "texts": [texts[0]],
-        "embeddings": [embeddings[0]],
-        "similarities": []
-    }
-    
-    low_similarity_count = 0
-    
-    for i in range(1, len(transcript)):
-        text = texts[i]
-        
-        if len(text) < MIN_SENTENCE_LENGTH:
-            current["texts"].append(text)
-            current["end"] = transcript[i]["end"]
-            current["embeddings"].append(embeddings[i])
-            continue
-        
-        avg_embed = rolling_embedding(current["embeddings"])
-        similarity = cosine_similarity([avg_embed], [embeddings[i]])[0][0]
-        current["similarities"].append(similarity)
-        
-        duration = topic_duration(current)
-        dynamic_threshold = max(
-            0.55,
-            np.mean(current["similarities"][-3:]) - 0.05
-        )
-        
-        if similarity < dynamic_threshold:
-            low_similarity_count += 1
-        else:
-            low_similarity_count = 0
-        
-        should_split = (
-            (low_similarity_count >= LOW_SIMILARITY_PATIENCE and duration >= MIN_TOPIC_DURATION)
-            or duration >= MAX_TOPIC_DURATION
-        )
-        
-        if should_split:
-            topics.append({
-                "start": current["start"],
-                "end": current["end"],
-                "texts": current["texts"],
-                "coherence_score": round(
-                    float(np.mean(current["similarities"])) if current["similarities"] else 1.0,
-                    3
-                )
-            })
-            
-            current = {
-                "start": transcript[i]["start"],
-                "end": transcript[i]["end"],
-                "texts": [text],
-                "embeddings": [embeddings[i]],
-                "similarities": []
-            }
-            low_similarity_count = 0
-        else:
-            current["end"] = transcript[i]["end"]
-            current["texts"].append(text)
-            current["embeddings"].append(embeddings[i])
-    
-    topics.append({
-        "start": current["start"],
-        "end": current["end"],
-        "texts": current["texts"],
-        "coherence_score": round(
-            float(np.mean(current["similarities"])) if current["similarities"] else 1.0,
-            3
-        )
-    })
-    
-    # Merge small topics
-    def merge_small_topics(topics):
-        if not topics:
-            return topics
-        merged = [topics[0]]
-        
-        for topic in topics[1:]:
-            last = merged[-1]
-            duration = topic["end"] - topic["start"]
-            
-            if duration < MERGE_MIN_DURATION or topic["coherence_score"] < MERGE_MIN_COHERENCE:
-                last["end"] = topic["end"]
-                last["texts"].extend(topic["texts"])
-                last["coherence_score"] = round(
-                    (last["coherence_score"] + topic["coherence_score"]) / 2, 3
-                )
-            else:
-                merged.append(topic)
-        
-        return merged
-    
-    return merge_small_topics(topics)
-
-# =========================
-# STEP 3: Topic Processing
-# =========================
-
-def process_step3(session_id):
-    try:
-        socketio.emit('progress', {
-            'step': 3,
-            'message': 'Processing topics with AI...',
-            'status': 'processing'
-        }, to=session_id)
-        
-        socketio.sleep(0)
-        
-        INPUT_PATH = DATA_DIR / "topics.json"
-        OUTPUT_PATH = DATA_DIR / "processed_topics.json"
-        
-        llm = Llama(
-            model_path=MODEL_PATH,
-            n_ctx=2048,
-            n_threads=8,
-            temperature=0.3,
-            verbose=False
-        )
-        
-        with open(INPUT_PATH, "r", encoding="utf-8") as f:
-            topics = json.load(f)
-        
-        processed_topics = []
-        
-        for idx, topic in enumerate(topics):
-            socketio.emit('progress', {
-                'step': 3,
-                'message': f'Processing topic {idx + 1} of {len(topics)}...',
-                'status': 'processing',
-                'data': {'current': idx + 1, 'total': len(topics)}
-            }, to=session_id)
-            
-            socketio.sleep(0)
-            
-            raw_text = " ".join(topic["texts"]).strip()
-            prompt = build_processing_prompt(raw_text)
-            
-            output = llm(prompt, max_tokens=600)
-            response = output["choices"][0]["text"]
-            
-            try:
-                start = response.find("{")
-                end = response.rfind("}") + 1
-                structured = json.loads(response[start:end])
-            except Exception:
-                structured = {
-                    "clean_explanation": raw_text[:600],
-                    "key_points": [],
-                    "example": "",
-                    "prerequisites": ["None"]
-                }
-            
-            processed_topics.append({
-                "topic_id": idx,
-                "start": topic["start"],
-                "end": topic["end"],
-                "raw_text": raw_text,
-                "clean_explanation": structured.get("clean_explanation", ""),
-                "key_points": structured.get("key_points", []),
-                "example": structured.get("example", ""),
-                "prerequisites": structured.get("prerequisites", ["None"])
-            })
-        
-        with open(OUTPUT_PATH, "w", encoding="utf-8") as f:
-            json.dump(processed_topics, f, indent=2, ensure_ascii=False)
-        
-        socketio.emit('progress', {
-            'step': 3,
-            'message': 'All topics processed successfully!',
-            'status': 'complete'
-        }, to=session_id)
-        
-        return True
-    except Exception as e:
-        print(f"Error in step 3: {str(e)}")
-        socketio.emit('progress', {
-            'step': 3,
-            'message': f'Error: {str(e)}',
-            'status': 'error'
-        }, to=session_id)
-        return False
-
-def build_processing_prompt(text: str) -> str:
-    return f"""
-<|system|>
-You are an expert teacher who explains concepts clearly to beginners.
-You never introduce new concepts not present in the lecture.
-<|end|>
-
-<|user|>
-Explain the following lecture segment in very simple language.
-
-Rules:
-- Do NOT add new concepts
-- Be concise
-- Use exactly ONE simple example
-- List 3–5 key points
-- Mention prerequisites or write "None"
-
-Lecture segment:
-{text}
-
-Return STRICT JSON:
-{{
-  "clean_explanation": "...",
-  "key_points": ["...", "..."],
-  "example": "...",
-  "prerequisites": ["..."]
-}}
-<|end|>
-
-<|assistant|>
-"""
-
-# =========================
-# STEP 5: MCQ Generation
-# =========================
-
-def process_step5(session_id):
-    try:
-        socketio.emit('progress', {
-            'step': 5,
-            'message': 'Generating quiz questions...',
-            'status': 'processing'
-        }, to=session_id)
-        
-        socketio.sleep(0)
-        
-        INPUT_PATH = DATA_DIR / "processed_topics.json"
-        OUTPUT_PATH = DATA_DIR / "mcqs.json"
-        
-        llm = Llama(
-            model_path=MODEL_PATH,
-            n_ctx=2048,
-            n_threads=8,
-            temperature=0.3,
-            verbose=False
-        )
-        
-        with open(INPUT_PATH, "r", encoding="utf-8") as f:
-            topics = json.load(f)
-        
-        full_context = "\n".join(
-            f"Topic {t['topic_id']}: {t['clean_explanation']}"
-            for t in topics
-        )
-        
-        prompt = build_mcq_prompt(full_context)
-        output = llm(prompt, max_tokens=1200)
-        response = output["choices"][0]["text"]
-        
-        start = response.find("[")
-        end = response.rfind("]") + 1
-        mcqs = json.loads(response[start:end])
-        
-        with open(OUTPUT_PATH, "w", encoding="utf-8") as f:
-            json.dump(mcqs, f, indent=2, ensure_ascii=False)
-        
-        socketio.emit('progress', {
-            'step': 5,
-            'message': f'Generated {len(mcqs)} quiz questions!',
-            'status': 'complete',
-            'data': {'question_count': len(mcqs)}
-        }, to=session_id)
-        
-        return True
-    except Exception as e:
-        print(f"Error in step 5: {str(e)}")
-        socketio.emit('progress', {
-            'step': 5,
-            'message': f'Error: {str(e)}',
-            'status': 'error'
-        }, to=session_id)
-        return False
-
-def build_mcq_prompt(context):
-    return f"""
-<|system|>
-You are an expert educational assessment designer.
-
-You generate multiple-choice questions based on instructional content.
-You strictly follow cognitive difficulty definitions.
-<|end|>
-
-<|user|>
-Instructional content:
-{context}
-
-Task:
-Generate MCQs at three difficulty levels.
-
-Difficulty definitions:
-Easy:
-- Recall or recognition
-- Explicitly stated facts
-- Low conceptual complexity
-
-Medium:
-- Application of ideas
-- Connecting concepts
-- Procedures demonstrated in content
-
-Difficult:
-- High abstraction
-- Inference or reasoning
-- Transfer to unfamiliar situations
-- Multi-step reasoning not explicitly modeled
-
-Rules:
-- 3 Easy MCQs
-- 3 Medium MCQs
-- 3 Difficult MCQs
-- Each MCQ has 4 options
-- Only one correct option
-- Do NOT add external knowledge
-
-Return STRICT JSON ONLY in this format:
-[
-  {{
-    "question": "...",
-    "options": ["A", "B", "C", "D"],
-    "correct_index": 0,
-    "difficulty": "easy",
-    "concept": "..."
-  }}
-]
-<|end|>
-
-<|assistant|>
-"""
-
-# =========================
-# ROUTES
-# =========================
-
-@app.route('/')
-def index():
-    return render_template('index.html')
-
-@app.route('/lesson')
-def lesson():
-    return render_template('lesson.html')
-
-@app.route('/quiz')
-def quiz():
-    return render_template('quiz.html')
-
-@app.route('/report')
-def report():
-    return render_template('report.html')
-
-@app.route('/api/start-processing', methods=['POST'])
-def start_processing():
-    data = request.json
-    video_source = data.get('video_source')
-    source_type = data.get('source_type')
-    session_id = data.get('session_id', 'default')
-    
-    # Start processing in background thread
-    thread = threading.Thread(
-        target=process_pipeline,
-        args=(video_source, source_type, session_id)
+def build_topic_context(topic) -> str:
+    """Build a concise context string from topic data for LLM prompts."""
+    if not topic:
+        return ""
+    key_pts = "; ".join(
+        topic.get("key_points", topic.get("board_notes", []))[:5]
     )
-    thread.start()
-    
-    return jsonify({'status': 'started', 'session_id': session_id})
+    notes = (topic.get("teacher_notes") or topic.get("teacher_speech") or "")[:600]
+    return (
+        f"Topic: {topic['topic_title']}\n"
+        f"Teacher explanation: {notes}\n"
+        f"Key points: {key_pts}"
+    )
 
-def process_pipeline(video_source, source_type, session_id):
-    """Run all processing steps"""
-    # Step 1: Speech to Text
-    if not process_step1(video_source, source_type, session_id):
-        return
-    
-    # Step 2: Topic Segmentation
-    if not process_step2(session_id):
-        return
-    
-    # Step 3: Topic Processing
-    if not process_step3(session_id):
-        return
-    
-    # Step 5: MCQ Generation (Step 4 is interactive, handled in lesson page)
-    if not process_step5(session_id):
-        return
-    
-    socketio.emit('progress', {
-        'step': 'complete',
-        'message': 'Lesson ready! Starting now...',
-        'status': 'complete'
-    }, to=session_id)
 
-@app.route('/api/upload-file', methods=['POST'])
-def upload_file():
-    if 'file' not in request.files:
-        return jsonify({'status': 'error', 'message': 'No file provided'})
-    
-    file = request.files['file']
-    if file.filename == '':
-        return jsonify({'status': 'error', 'message': 'No file selected'})
-    
-    # Save uploaded file
-    upload_folder = Path(app.config['UPLOAD_FOLDER'])
-    upload_folder.mkdir(exist_ok=True)
-    
-    filename = 'uploaded_' + str(int(time.time())) + '_' + file.filename
-    filepath = upload_folder / filename
-    file.save(str(filepath))
-    
-    return jsonify({
-        'status': 'success',
-        'file_path': str(filepath)
-    })
+# ── Routes ─────────────────────────────────────────────────────────────────────
 
-@app.route('/api/transcribe-audio', methods=['POST'])
-def transcribe_audio_route():
-    if 'audio' not in request.files:
-        return jsonify({'status': 'error', 'message': 'No audio provided'})
-    
-    audio_file = request.files['audio']
-    
-    # Save temporarily
-    temp_path = DATA_DIR / 'temp_audio.wav'
-    audio_file.save(str(temp_path))
-    
-    try:
-        import whisper
-        model = whisper.load_model("base")
-        result = model.transcribe(str(temp_path))
-        
-        # Clean up
-        temp_path.unlink()
-        
-        return jsonify({
-            'status': 'success',
-            'transcription': result['text']
-        })
-    except Exception as e:
-        return jsonify({
-            'status': 'error',
-            'message': str(e)
-        })
+@app.get("/", response_class=HTMLResponse)
+def root():
+    html_path = TEMPLATE_DIR / "classroom.html"
+    if not html_path.exists():
+        raise HTTPException(500, "classroom.html not found in templates/")
+    return HTMLResponse(html_path.read_text(encoding="utf-8"))
 
-@app.route('/api/get-report')
-def get_report():
-    try:
-        with open(DATA_DIR / "final_report.json", "r", encoding="utf-8") as f:
-            report = json.load(f)
-        return jsonify({'status': 'success', 'report': report})
-    except Exception as e:
-        return jsonify({'status': 'error', 'message': str(e)})
 
-@app.route('/api/download-lesson-notes')
-def download_lesson_notes():
-    """Generate and download lesson notes as PDF"""
-    try:
-        from reportlab.lib.pagesizes import letter, A4
-        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-        from reportlab.lib.units import inch
-        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, PageBreak
-        from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_JUSTIFY
-        from reportlab.lib.colors import HexColor
-        
-        with open(DATA_DIR / "processed_topics.json", "r", encoding="utf-8") as f:
-            topics = json.load(f)
-        
-        # Create PDF
-        pdf_path = DATA_DIR / "lesson_notes.pdf"
-        doc = SimpleDocTemplate(str(pdf_path), pagesize=letter,
-                               rightMargin=72, leftMargin=72,
-                               topMargin=72, bottomMargin=18)
-        
-        # Container for PDF elements
-        story = []
-        styles = getSampleStyleSheet()
-        
-        # Custom styles
-        title_style = ParagraphStyle(
-            'CustomTitle',
-            parent=styles['Heading1'],
-            fontSize=24,
-            textColor=HexColor('#1a2332'),
-            spaceAfter=30,
-            alignment=TA_CENTER,
-            fontName='Helvetica-Bold'
-        )
-        
-        topic_title_style = ParagraphStyle(
-            'TopicTitle',
-            parent=styles['Heading2'],
-            fontSize=16,
-            textColor=HexColor('#2563eb'),
-            spaceAfter=12,
-            spaceBefore=20,
-            fontName='Helvetica-Bold'
-        )
-        
-        heading_style = ParagraphStyle(
-            'CustomHeading',
-            parent=styles['Heading3'],
-            fontSize=12,
-            textColor=HexColor('#10b981'),
-            spaceAfter=8,
-            spaceBefore=12,
-            fontName='Helvetica-Bold'
-        )
-        
-        body_style = ParagraphStyle(
-            'CustomBody',
-            parent=styles['BodyText'],
-            fontSize=11,
-            leading=16,
-            alignment=TA_JUSTIFY,
-            spaceAfter=10
-        )
-        
-        # Title
-        story.append(Paragraph("LESSON NOTES", title_style))
-        story.append(Spacer(1, 0.2*inch))
-        story.append(Paragraph(f"Generated: {time.strftime('%B %d, %Y')}", styles['Normal']))
-        story.append(Spacer(1, 0.3*inch))
-        
-        # Add each topic
-        for idx, topic in enumerate(topics):
-            if idx > 0:
-                story.append(PageBreak())
-            
-            # Topic title
-            story.append(Paragraph(f"TOPIC {topic['topic_id'] + 1}", topic_title_style))
-            story.append(Spacer(1, 0.1*inch))
-            
-            # Overview
-            story.append(Paragraph("Overview", heading_style))
-            story.append(Paragraph(topic['clean_explanation'], body_style))
-            story.append(Spacer(1, 0.15*inch))
-            
-            # Key points
-            if topic['key_points']:
-                story.append(Paragraph("Key Points", heading_style))
-                for i, point in enumerate(topic['key_points'], 1):
-                    story.append(Paragraph(f"{i}. {point}", body_style))
-                story.append(Spacer(1, 0.15*inch))
-            
-            # Example
-            if topic['example']:
-                story.append(Paragraph("Example", heading_style))
-                story.append(Paragraph(topic['example'], body_style))
-                story.append(Spacer(1, 0.15*inch))
-            
-            # Prerequisites
-            if topic['prerequisites'] and topic['prerequisites'] != ['None']:
-                story.append(Paragraph("Prerequisites", heading_style))
-                for prereq in topic['prerequisites']:
-                    story.append(Paragraph(f"• {prereq}", body_style))
-        
-        # Build PDF
-        doc.build(story)
-        
-        return send_from_directory(DATA_DIR, "lesson_notes.pdf", as_attachment=True)
-    except Exception as e:
-        return jsonify({'status': 'error', 'message': str(e)})
+@app.get("/quiz", response_class=HTMLResponse)
+def quiz_page():
+    html_path = TEMPLATE_DIR / "quiz.html"
+    if not html_path.exists():
+        raise HTTPException(500, "quiz.html not found in templates/")
+    return HTMLResponse(html_path.read_text(encoding="utf-8"))
 
-@app.route('/api/get-topics')
-def get_topics():
-    try:
-        with open(DATA_DIR / "processed_topics.json", "r", encoding="utf-8") as f:
-            topics = json.load(f)
-        return jsonify({'status': 'success', 'topics': topics})
-    except Exception as e:
-        return jsonify({'status': 'error', 'message': str(e)})
 
-@app.route('/api/download-performance-report')
-def download_performance_report():
-    """Generate and download performance report as PDF"""
-    try:
-        from reportlab.lib.pagesizes import letter
-        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-        from reportlab.lib.units import inch
-        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
-        from reportlab.lib.enums import TA_CENTER, TA_LEFT
-        from reportlab.lib.colors import HexColor, white
-        
-        # Load report data
-        with open(DATA_DIR / "final_report.json", "r", encoding="utf-8") as f:
-            report_data = json.load(f)
-        
-        with open(DATA_DIR / "processed_topics.json", "r", encoding="utf-8") as f:
-            topics = json.load(f)
-        
-        # Create PDF
-        pdf_path = DATA_DIR / "performance_report.pdf"
-        doc = SimpleDocTemplate(str(pdf_path), pagesize=letter,
-                               rightMargin=72, leftMargin=72,
-                               topMargin=72, bottomMargin=18)
-        
-        story = []
-        styles = getSampleStyleSheet()
-        
-        # Custom styles
-        title_style = ParagraphStyle(
-            'Title',
-            parent=styles['Heading1'],
-            fontSize=24,
-            textColor=HexColor('#1a2332'),
-            spaceAfter=10,
-            alignment=TA_CENTER,
-            fontName='Helvetica-Bold'
-        )
-        
-        subtitle_style = ParagraphStyle(
-            'Subtitle',
-            parent=styles['Normal'],
-            fontSize=12,
-            textColor=HexColor('#64748b'),
-            spaceAfter=30,
-            alignment=TA_CENTER
-        )
-        
-        section_style = ParagraphStyle(
-            'Section',
-            parent=styles['Heading2'],
-            fontSize=16,
-            textColor=HexColor('#2563eb'),
-            spaceAfter=12,
-            spaceBefore=20,
-            fontName='Helvetica-Bold'
-        )
-        
-        body_style = ParagraphStyle(
-            'Body',
-            parent=styles['BodyText'],
-            fontSize=11,
-            leading=16,
-            spaceAfter=10
-        )
-        
-        # Title
-        story.append(Paragraph("STUDENT PERFORMANCE REPORT", title_style))
-        story.append(Paragraph(f"Generated: {time.strftime('%B %d, %Y at %I:%M %p')}", subtitle_style))
-        story.append(Spacer(1, 0.3*inch))
-        
-        # Performance Summary
-        story.append(Paragraph("Performance Summary", section_style))
-        
-        mcq_summary = report_data.get('mcq_summary', [])
-        total_questions = len(mcq_summary)
-        correct_answers = sum(1 for q in mcq_summary if q.get('correct', False))
-        score_percent = (correct_answers / total_questions * 100) if total_questions > 0 else 0
-        
-        summary_data = [
-            ['Metric', 'Value'],
-            ['Topics Covered', str(len(topics))],
-            ['Total Questions', str(total_questions)],
-            ['Correct Answers', str(correct_answers)],
-            ['Quiz Score', f"{score_percent:.1f}%"]
-        ]
-        
-        summary_table = Table(summary_data, colWidths=[3*inch, 2*inch])
-        summary_table.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, 0), HexColor('#2563eb')),
-            ('TEXTCOLOR', (0, 0), (-1, 0), white),
-            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, 0), (-1, 0), 12),
-            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-            ('BACKGROUND', (0, 1), (-1, -1), HexColor('#f8fafc')),
-            ('GRID', (0, 0), (-1, -1), 1, HexColor('#e2e8f0'))
-        ]))
-        
-        story.append(summary_table)
-        story.append(Spacer(1, 0.3*inch))
-        
-        # Topics Learned
-        story.append(Paragraph("Topics Learned", section_style))
-        for idx, topic in enumerate(topics, 1):
-            story.append(Paragraph(f"<b>Topic {idx}:</b> {topic['clean_explanation'][:100]}...", body_style))
-        story.append(Spacer(1, 0.2*inch))
-        
-        # Descriptive Evaluations
-        if report_data.get('descriptive_evaluations'):
-            story.append(Paragraph("Descriptive Question Feedback", section_style))
-            for idx, evaluation in enumerate(report_data['descriptive_evaluations'], 1):
-                story.append(Paragraph(f"<b>Question {idx}:</b>", body_style))
-                story.append(Paragraph(evaluation['question'], body_style))
-                story.append(Paragraph(f"<b>Your Answer:</b> {evaluation['student_answer']}", body_style))
-                story.append(Paragraph(f"<b>Feedback:</b> {evaluation['feedback']}", body_style))
-                story.append(Spacer(1, 0.15*inch))
-        
-        # Final Analysis
-        story.append(Paragraph("Overall Analysis", section_style))
-        final_report_text = report_data.get('final_report', 'No detailed analysis available.')
-        story.append(Paragraph(final_report_text, body_style))
-        
-        # Build PDF
-        doc.build(story)
-        
-        return send_from_directory(DATA_DIR, "performance_report.pdf", as_attachment=True)
-    except Exception as e:
-        return jsonify({'status': 'error', 'message': str(e)})
+@app.get("/report", response_class=HTMLResponse)
+def report_page():
+    html_path = TEMPLATE_DIR / "report.html"
+    if not html_path.exists():
+        raise HTTPException(500, "report.html not found in templates/")
+    return HTMLResponse(html_path.read_text(encoding="utf-8"))
 
-@app.route('/api/get-mcqs')
-def get_mcqs():
-    try:
-        with open(DATA_DIR / "mcqs.json", "r", encoding="utf-8") as f:
-            mcqs = json.load(f)
-        return jsonify({'status': 'success', 'mcqs': mcqs})
-    except Exception as e:
-        return jsonify({'status': 'error', 'message': str(e)})
 
-@app.route('/api/answer-doubt', methods=['POST'])
-def answer_doubt():
-    data = request.json
-    question = data.get('question')
-    context = data.get('context', '')
-    
-    try:
-        llm = Llama(
-            model_path=MODEL_PATH,
-            n_ctx=2048,
-            n_threads=8,
-            temperature=0.3,
-            verbose=False
-        )
-        
-        prompt = build_doubt_prompt(context, question)
-        output = llm(prompt, max_tokens=400)
-        answer = output["choices"][0]["text"].strip()
-        
-        return jsonify({'status': 'success', 'answer': answer})
-    except Exception as e:
-        return jsonify({'status': 'error', 'message': str(e)})
-
-def build_doubt_prompt(context, question):
-    return f"""
-<|system|>
-You are a patient tutor helping a student understand a topic.
-You must ONLY use the provided explanation.
-You must NOT introduce new concepts.
-Explain simply with one example.
-<|end|>
-
-<|user|>
-Context so far:
-{context}
-
-Student question:
-{question}
-
-Answer clearly and simply.
-<|end|>
-
-<|assistant|>
-"""
-
-@app.route('/api/evaluate-mcq', methods=['POST'])
-def evaluate_mcq():
-    data = request.json
-    question = data.get('question')
-    options = data.get('options')
-    chosen_index = data.get('chosen_index')
-    correct_index = data.get('correct_index')
-    concept = data.get('concept', '')
-    
-    is_correct = chosen_index == correct_index
-    
-    if not is_correct:
-        try:
-            # Load topics for explanation
-            with open(DATA_DIR / "processed_topics.json", "r", encoding="utf-8") as f:
-                topics = json.load(f)
-            
-            explanation = next(
-                (t['clean_explanation'] for t in topics if str(t.get('topic_id')) == concept),
-                ""
-            )
-            
-            llm = Llama(
-                model_path=MODEL_PATH,
-                n_ctx=2048,
-                n_threads=8,
-                temperature=0.3,
-                verbose=False
-            )
-            
-            prompt = build_feedback_prompt(
-                question,
-                options,
-                options[chosen_index] if 0 <= chosen_index < len(options) else "Invalid",
-                options[correct_index],
-                explanation
-            )
-            
-            output = llm(prompt, max_tokens=400)
-            feedback = output["choices"][0]["text"].strip()
-            
-            return jsonify({
-                'status': 'success',
-                'is_correct': False,
-                'feedback': feedback
-            })
-        except Exception as e:
-            return jsonify({
-                'status': 'error',
-                'message': str(e)
-            })
-    
-    return jsonify({
-        'status': 'success',
-        'is_correct': True,
-        'feedback': 'Correct! Well done!'
-    })
-
-def build_feedback_prompt(question, options, chosen, correct, explanation):
-    return f"""
-<|system|>
-You are a helpful tutor giving constructive feedback.
-Explain mistakes clearly without judgment.
-<|end|>
-
-<|user|>
-Question:
-{question}
-
-Options:
-{options}
-
-Student chose: {chosen}
-Correct answer: {correct}
-
-Relevant explanation:
-{explanation}
-
-Explain:
-1. Why the chosen option is wrong
-2. Why the correct option is right
-<|end|>
-
-<|assistant|>
-"""
-
-@app.route('/api/generate-report', methods=['POST'])
-def generate_report():
-    data = request.json
-    mcq_results = data.get('mcq_results', [])
-    descriptive_answers = data.get('descriptive_answers', [])
-    
-    try:
-        with open(DATA_DIR / "processed_topics.json", "r", encoding="utf-8") as f:
-            topics = json.load(f)
-        
-        llm = Llama(
-            model_path=MODEL_PATH,
-            n_ctx=2048,
-            n_threads=8,
-            temperature=0.3,
-            verbose=False
-        )
-        
-        all_explanations = "\n".join(
-            f"- {t['clean_explanation']}" for t in topics
-        )
-        
-        # Evaluate descriptive answers
-        evaluations = []
-        for item in descriptive_answers:
-            prompt = build_evaluation_prompt(
-                item['question'],
-                item['answer'],
-                all_explanations
-            )
-            output = llm(prompt, max_tokens=500)
-            feedback = output["choices"][0]["text"].strip()
-            
-            evaluations.append({
-                "question": item['question'],
-                "student_answer": item['answer'],
-                "feedback": feedback
-            })
-        
-        # Generate final report
-        report_prompt_text = build_report_prompt(topics, mcq_results, evaluations)
-        output = llm(report_prompt_text, max_tokens=700)
-        final_report = output["choices"][0]["text"].strip()
-        
-        report_data = {
-            "mcq_summary": mcq_results,
-            "descriptive_evaluations": evaluations,
-            "final_report": final_report
+@app.get("/api/topics")
+def api_topics():
+    data = load_json(DATA_DIR / "processed_topics.json")
+    if data is None:
+        raise HTTPException(503, "processed_topics.json not found — run step_3 first")
+    return JSONResponse([
+        {
+            "topic_id":      t["topic_id"],
+            "topic_title":   t["topic_title"],
+            "start":         t["start"],
+            "end":           t["end"],
+            "duration":      round(t["end"] - t["start"], 1),
+            "quality_score": t.get("quality_score", 0.5),
         }
-        
-        with open(DATA_DIR / "final_report.json", "w", encoding="utf-8") as f:
-            json.dump(report_data, f, indent=2, ensure_ascii=False)
-        
-        return jsonify({'status': 'success', 'report': report_data})
-    except Exception as e:
-        return jsonify({'status': 'error', 'message': str(e)})
+        for t in data
+    ])
 
-def build_evaluation_prompt(question, answer, content):
-    return f"""
-<|system|>
-You are an expert teacher evaluating a student's written answer.
-Be constructive and specific.
-<|end|>
 
-<|user|>
-Question:
-{question}
+@app.get("/api/topic/{topic_id}")
+def api_topic(topic_id: int):
+    t = get_topic(topic_id)
+    if t is None:
+        raise HTTPException(404, f"Topic {topic_id} not found")
+    return JSONResponse(t)
 
-Student answer:
-{answer}
 
-Relevant instructional content:
-{content}
+# ── /api/ask — streaming SSE doubt answering ───────────────────────────────────
 
-Evaluate the answer on:
-1. Conceptual correctness
-2. Completeness
-3. Clarity
+class AskRequest(BaseModel):
+    question: str
+    topic_id: int = 0
+    history:  list = []
 
-Then give improvement suggestions.
-<|end|>
 
-<|assistant|>
-"""
+@app.post("/api/ask")
+async def api_ask(req: AskRequest):
+    topic       = get_topic(req.topic_id)
+    topic_ctx   = build_topic_context(topic)
 
-def build_report_prompt(topics, mcq_results, evaluations):
-    topic_list = ", ".join(f"Topic {t['topic_id']}" for t in topics)
-    
-    return f"""
-<|system|>
-You are an intelligent tutoring system generating a final learning report.
-<|end|>
+    # Supplement with RAG if available
+    rag_ctx = rag_context(req.question)
+    if rag_ctx:
+        topic_ctx += f"\n\nAdditional context:\n{rag_ctx[:400]}"
 
-<|user|>
-Topics covered:
-{topic_list}
+    # ── Step 1: Board key-points ─────────────────────────────────────────────
+    board_system = (
+        "You are an Indian school teacher writing quick chalkboard notes to answer a student's doubt.\n"
+        "Return ONLY a valid JSON array of 4–5 items. No markdown, no extra text before or after the JSON.\n"
+        'Schema: [{"text":"…","color":"…","indent":0}]\n'
+        "Rules:\n"
+        "  Item 1: 3–5 word title summarising the question, color=yellow\n"
+        "  Items 2–4: key answer points (max 7 words each), start with '→ ', colors: cyan, lime, orange\n"
+        "  Item 5 (optional): a simple everyday example, color=white\n"
+        "Every item must be meaningful — no 'See explanation' placeholders."
+    )
+    board_user = (
+        f"Lesson context:\n{topic_ctx[:350]}\n\n"
+        f"Student's question: {req.question}"
+    )
+    board_raw = llm(phi_prompt(board_system, board_user), max_tokens=300)["choices"][0]["text"].strip()
 
-MCQ Performance:
-{json.dumps(mcq_results, indent=2)}
+    board_items: list = []
+    try:
+        s, e = board_raw.find("["), board_raw.rfind("]") + 1
+        if s >= 0 and e > s:
+            board_items = clean_board_items(json.loads(board_raw[s:e]))
+    except Exception:
+        pass
 
-Descriptive evaluations:
-{json.dumps(evaluations, indent=2)}
+    if not board_items:
+        # Minimal fallback — still meaningful
+        short_q = req.question[:38].rstrip()
+        board_items = clean_board_items([
+            {"text": short_q,           "color": "yellow", "indent": 0},
+            {"text": "→ Key concept",   "color": "cyan",   "indent": 0},
+            {"text": "→ How it works",  "color": "lime",   "indent": 0},
+            {"text": "→ Remember this", "color": "orange", "indent": 0},
+        ])
 
-Generate a final student-facing report with:
-- Topics learned
-- Strengths
-- Weak areas
-- Final summary notes
-- Study recommendations
-<|end|>
+    # ── Step 2: Concept diagram for the doubt ────────────────────────────────
+    diag_system = (
+        "Generate a simple horizontal Mermaid flowchart (4–5 nodes) to explain a student's question.\n"
+        'Return ONLY JSON (no markdown): {"type":"flowchart_lr","mermaid":"…"}\n'
+        "Rules:\n"
+        "  - Use 'flowchart LR' (horizontal left-to-right)\n"
+        "  - Each node: 2–5 meaningful words in square brackets, e.g. A[\"Concept name\"]\n"
+        "  - Nodes must form a logical sequence or hierarchy for the topic\n"
+        "  - No single-word nodes"
+    )
+    diag_user = (
+        f"Context: {topic_ctx[:250]}\n"
+        f"Question: {req.question}"
+    )
+    diag_raw = llm(phi_prompt(diag_system, diag_user), max_tokens=350)["choices"][0]["text"].strip()
 
-<|assistant|>
-"""
+    doubt_diagram: dict = {}
+    try:
+        # Strip markdown fences if present
+        diag_raw = re.sub(r"^```[a-z]*\n?", "", diag_raw, flags=re.I)
+        diag_raw = re.sub(r"\n?```$", "", diag_raw.rstrip())
+        s, e = diag_raw.find("{"), diag_raw.rfind("}") + 1
+        if s >= 0 and e > s:
+            parsed = json.loads(diag_raw[s:e])
+            if parsed.get("mermaid", "").strip():
+                doubt_diagram = parsed
+    except Exception:
+        pass
 
-@socketio.on('connect')
-def handle_connect():
-    print('Client connected')
+    if not doubt_diagram:
+        # Fallback: build from board items
+        nodes  = "\n".join(f'  N{i}["{it["text"].lstrip("→ ★").strip()[:30]}"]'
+                           for i, it in enumerate(board_items[:4]))
+        arrows = "\n".join(f"  N{i} --> N{i+1}" for i in range(min(len(board_items)-1, 3)))
+        doubt_diagram = {
+            "type": "flowchart_lr",
+            "mermaid": f"flowchart LR\n{nodes}\n{arrows}",
+        }
 
-@socketio.on('disconnect')
-def handle_disconnect():
-    print('Client disconnected')
+    # ── Step 3: Spoken answer (streaming) ────────────────────────────────────
+    history_str = ""
+    for m in req.history[-4:]:
+        role = "Student" if m.get("role") == "user" else "Lekha"
+        history_str += f"{role}: {m.get('content', '')}\n"
 
-@socketio.on('join')
-def handle_join(data):
-    session_id = data.get('session_id', 'default')
-    from flask_socketio import join_room
-    join_room(session_id)
-    print(f'Client joined session: {session_id}')
+    speech_system = (
+        "You are Lekha, a warm, friendly Indian school teacher answering a student's doubt.\n"
+        "Rules:\n"
+        "  - 3–4 complete sentences only — be concise and clear\n"
+        "  - Use simple conversational Indian English (not formal)\n"
+        "  - Include one short everyday Indian example (chai, cricket, market, etc.)\n"
+        "  - Natural openers: 'See basically,', 'Think of it this way —', 'Good question!'\n"
+        "  - End with an encouraging closing line\n"
+        "  - Do NOT start with 'I', 'Sure,', 'Hello', 'Certainly', or 'Of course'\n"
+        "  - Every sentence must explain something — no filler phrases"
+    )
+    speech_user = (
+        f"Lesson context:\n{topic_ctx[:450]}\n\n"
+        f"{history_str}"
+        f"Student asks: {req.question}"
+    )
 
-if __name__ == '__main__':
-    socketio.run(app, debug=True, host='0.0.0.0', port=5000)
+    async def event_stream():
+        # Event 1: board items + diagram (sent immediately, before streaming answer)
+        yield f"data: {json.dumps({'type': 'board', 'items': board_items, 'diagram': doubt_diagram})}\n\n"
+
+        # Events 2…N: stream the spoken answer token by token
+        full = ""
+        for chunk in llm(phi_prompt(speech_system, speech_user), max_tokens=260, stream=True):
+            tok   = chunk["choices"][0]["text"]
+            full += tok
+            yield f"data: {json.dumps({'type': 'token', 'token': tok})}\n\n"
+            await asyncio.sleep(0)  # yield control to event loop
+
+        # Final event: complete answer
+        yield f"data: {json.dumps({'type': 'done', 'full': full.strip()})}\n\n"
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
+# ── MCQs ───────────────────────────────────────────────────────────────────────
+
+@app.get("/api/mcqs/{difficulty}")
+def api_mcqs(difficulty: str):
+    data = load_json(DATA_DIR / "mcqs.json")
+    if data is None:
+        raise HTTPException(503, "mcqs.json not found — run step_5 first")
+    # Never send correct_index to client
+    return JSONResponse([
+        {k: v for k, v in q.items() if k != "correct_index"}
+        for q in data
+        if q.get("difficulty") == difficulty
+    ])
+
+
+class AnswerReq(BaseModel):
+    question_index: int
+    difficulty:     str
+    chosen_index:   int
+
+
+@app.post("/api/check_answer")
+async def api_check_answer(req: AnswerReq):
+    data = load_json(DATA_DIR / "mcqs.json")
+    if data is None:
+        raise HTTPException(503, "mcqs.json not found")
+
+    qs = [q for q in data if q.get("difficulty") == req.difficulty]
+    if req.question_index >= len(qs):
+        raise HTTPException(404, "Question index out of range")
+
+    q  = qs[req.question_index]
+    ok = req.chosen_index == q["correct_index"]
+
+    result = {
+        "correct":           ok,
+        "correct_index":     q["correct_index"],
+        "correct_text":      q["options"][q["correct_index"]],
+        "board_hint":        q.get("board_hint", ""),
+        "short_explanation": q.get("short_explanation", ""),
+        "teacher_feedback":  "",
+    }
+
+    if not ok:
+        ctx = rag_context(q["question"])
+        fb_prompt = phi_prompt(
+            system=(
+                "You are a kind, encouraging Indian school teacher.\n"
+                "Write 2 warm, brief sentences:\n"
+                "  1. Why the student's answer was incorrect\n"
+                "  2. What the correct answer means in simple terms\n"
+                "Use friendly Indian English — like talking to a student, not writing an essay."
+            ),
+            user=(
+                f"Question: {q['question']}\n"
+                f"Student chose: {q['options'][req.chosen_index]}\n"
+                f"Correct answer: {q['options'][q['correct_index']]}\n"
+                f"Context: {ctx[:300]}"
+            ),
+        )
+        result["teacher_feedback"] = llm(fb_prompt, max_tokens=140)["choices"][0]["text"].strip()
+
+    return JSONResponse(result)
+
+
+# ── Descriptive evaluation ─────────────────────────────────────────────────────
+
+class DescReq(BaseModel):
+    question: str
+    answer:   str
+
+
+@app.post("/api/descriptive")
+def api_descriptive(req: DescReq):
+    ctx = rag_context(req.question)
+    eval_prompt = phi_prompt(
+        system=(
+            "You are an expert teacher evaluating a student's written answer.\n"
+            "Evaluate on 4 criteria (1 sentence each):\n"
+            "  1. Completeness — did they cover the key points?\n"
+            "  2. Correctness  — is the information accurate?\n"
+            "  3. Clarity      — is it well explained?\n"
+            "  4. HOTS         — do they connect it to real life or broader ideas?\n\n"
+            "End with: overall score out of 10, one strength, one improvement.\n"
+            "Total: under 100 words. Be encouraging. Use friendly Indian English."
+        ),
+        user=(
+            f"Question: {req.question}\n"
+            f"Student's answer: {req.answer}\n"
+            f"Relevant content: {ctx[:400]}"
+        ),
+    )
+    out = llm(eval_prompt, max_tokens=230)["choices"][0]["text"].strip()
+    return JSONResponse({"feedback": out})
+
+
+# ── Reports ────────────────────────────────────────────────────────────────────
+
+@app.get("/api/report")
+def api_report():
+    data = load_json(DATA_DIR / "final_report.json")
+    if data is None:
+        raise HTTPException(503, "No report yet — complete the quiz first")
+    return JSONResponse(data)
+
+
+@app.get("/api/quiz_results")
+def api_quiz_results():
+    return JSONResponse(load_json(DATA_DIR / "quiz_results.json") or {})
+
+
+class QuizResultsReq(BaseModel):
+    results: dict
+
+
+@app.post("/api/save_quiz_results")
+def api_save_quiz_results(req: QuizResultsReq):
+    out = DATA_DIR / "quiz_results.json"
+    DATA_DIR.mkdir(exist_ok=True)
+    with open(out, "w", encoding="utf-8") as f:
+        json.dump(req.results, f, indent=2, ensure_ascii=False)
+    return JSONResponse({"status": "saved"})
+
+
+class FinalReportReq(BaseModel):
+    quiz_summary:  dict
+    weak_topics:   list
+    desc_evals:    list
+
+
+@app.post("/api/generate_report")
+def api_generate_report(req: FinalReportReq):
+    topics_data = load_json(DATA_DIR / "processed_topics.json") or []
+    topic_titles = [t["topic_title"] for t in topics_data]
+
+    report_prompt = phi_prompt(
+        system=(
+            "You are an intelligent tutoring system generating a student learning report.\n"
+            "Write a friendly, encouraging report (under 150 words) with clear sections:\n"
+            "  - Topics Learned\n"
+            "  - Quiz Performance\n"
+            "  - Top 2 Strengths\n"
+            "  - Top 2 Areas to Improve\n"
+            "  - 2 Study Recommendations\n"
+            "Use warm, motivating Indian English. Address the student directly."
+        ),
+        user=(
+            f"Topics covered: {topic_titles}\n"
+            f"Quiz summary: {json.dumps(req.quiz_summary)}\n"
+            f"Weak areas (wrong questions): {req.weak_topics[:5]}"
+        ),
+    )
+    report_text = llm(report_prompt, max_tokens=400)["choices"][0]["text"].strip()
+
+    final = {
+        "topics":                  topic_titles,
+        "quiz_summary":            req.quiz_summary,
+        "descriptive_evaluations": req.desc_evals,
+        "weak_topics":             list(set(req.weak_topics)),
+        "final_report":            report_text,
+    }
+    out = DATA_DIR / "final_report.json"
+    with open(out, "w", encoding="utf-8") as f:
+        json.dump(final, f, indent=2, ensure_ascii=False)
+    return JSONResponse(final)
+
+
+@app.get("/api/study_notes")
+def api_study_notes():
+    """Generate concise study notes for each topic. Cached in data/study_notes.json."""
+    cache = DATA_DIR / "study_notes.json"
+    if cache.exists():
+        return JSONResponse(load_json(cache))
+
+    topics_data = load_json(DATA_DIR / "processed_topics.json") or []
+    notes = []
+    for t in topics_data:
+        title  = t.get("topic_title", "Topic")
+        speech = (t.get("teacher_notes") or t.get("teacher_speech") or "")[:600]
+        board  = t.get("board_notes", [])
+
+        prompt = phi_prompt(
+            system=(
+                "You are a teacher writing concise, exam-ready study notes for a student.\n"
+                "Format EXACTLY as:\n"
+                "SUMMARY: 2 sentences summarising the topic.\n"
+                "KEY POINTS:\n• point 1\n• point 2\n• point 3\n• point 4\n"
+                "REMEMBER: One memorable tip or mnemonic.\n"
+                "Keep total under 100 words. Clear, simple language."
+            ),
+            user=(
+                f"Topic: {title}\n"
+                f"Lesson content: {speech}\n"
+                f"Board notes: {'; '.join(board[:5])}"
+            ),
+        )
+        text = llm(prompt, max_tokens=220)["choices"][0]["text"].strip()
+        notes.append({"topic_id": t["topic_id"], "title": title, "notes": text})
+
+    with open(cache, "w", encoding="utf-8") as f:
+        json.dump(notes, f, indent=2, ensure_ascii=False)
+    return JSONResponse(notes)
+
+
+# ── Health ─────────────────────────────────────────────────────────────────────
+
+@app.get("/api/health")
+def api_health():
+    return JSONResponse({
+        "status": "ok",
+        "checks": {
+            "model":            Path(MODEL_PATH).exists(),
+            "processed_topics": (DATA_DIR / "processed_topics.json").exists(),
+            "mcqs":             (DATA_DIR / "mcqs.json").exists(),
+            "rag_store":        (DATA_DIR / "rag_store").exists(),
+        },
+    })

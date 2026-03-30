@@ -1,12 +1,17 @@
-Flask
-Flask-SocketIO
-python-socketio
-openai-whisper
-yt-dlp
-sentence-transformers
-scikit-learn
+# ── AI / ML ──────────────────────────────────────────────────
+llama-cpp-python   # Phi-3.5-mini via GGUF (CPU)
+openai-whisper      # Speech to text
+sentence-transformers  # Embeddings for topic segmentation
+scikit-learn       # cosine_similarity
+
+# ── RAG ──────────────────────────────────────────────────────
+chromadb              # Local vector store
+
+# ── Web server ───────────────────────────────────────────────
+fastapi
+uvicorn[standard]
+python-multipart
+
+# ── Utilities ────────────────────────────────────────────────
 numpy
-llama-cpp-python
-torch
-torchaudio
-reportlab
+yt-dlp                         # YouTube audio download

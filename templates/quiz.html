@@ -1,157 +1,1293 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Video Tutor - Quiz</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>EduAI — Quiz</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Caveat:wght@400;600;700&family=DM+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg0:#07090a;--bg1:#0b0f10;
+  --board-bg:#0c2418;--board-bg2:#0f2d1e;--board-hi:#13382a;
+  --frame1:#3b1f06;--frame2:#5a3212;--frame3:#7d4a1a;
+  --g1:#22c55e;--g2:#4ade80;--g3:#86efac;
+  --gold:#fbbf24;--cyan:#22d3ee;--sky:#38bdf8;--violet:#a78bfa;
+  --red:#f87171;--orange:#fb923c;
+  --text:#e8f4ed;--text2:#9db8a6;
+  --muted:rgba(157,184,166,.38);
+  --br:rgba(34,197,94,.13);--br2:rgba(34,197,94,.07);
+  --r:14px;--sh:0 20px 48px rgba(0,0,0,.75);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:var(--bg0);font-family:"DM Sans",sans-serif;color:var(--text)}
+body{background:radial-gradient(ellipse 200% 100% at 50% -8%,#0d2216,var(--bg0) 90%);min-height:100vh}
+
+/* TOPBAR */
+#topbar{height:56px;display:flex;align-items:center;gap:12px;padding:0 20px;
+  background:rgba(5,8,9,.98);border-bottom:1px solid var(--br);
+  backdrop-filter:blur(20px);position:sticky;top:0;z-index:40}
+.logo{display:flex;align-items:center;gap:9px;font-weight:800;font-size:1.05rem;color:var(--g2)}
+.logo-gem{width:32px;height:32px;border-radius:9px;
+  background:linear-gradient(135deg,#22c55e,#0891b2,#7c3aed);
+  display:flex;align-items:center;justify-content:center;font-size:.85rem}
+.back-btn{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);
+  border-radius:9px;padding:6px 14px;color:var(--muted);font-size:.76rem;
+  font-weight:700;cursor:pointer;transition:all .15s;text-decoration:none;
+  display:flex;align-items:center;gap:5px}
+.back-btn:hover{border-color:var(--br);color:var(--text)}
+#phase-label{flex:1;text-align:center;font-size:.72rem;font-weight:700;
+  letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+#phase-label span{color:var(--g3)}
+.xp-badge{padding:5px 12px;border-radius:30px;font-size:.76rem;font-weight:800;
+  background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.25);color:var(--gold)}
+
+/* PROGRESS */
+#progress-strip{height:4px;background:rgba(255,255,255,.06)}
+#progress-fill{height:100%;background:linear-gradient(90deg,var(--g1),var(--cyan));
+  width:0%;transition:width .5s ease}
+
+/* MAIN */
+#main{max-width:820px;margin:0 auto;padding:32px 20px 60px}
+
+/* PHASE HEADER */
+.phase-header{text-align:center;margin-bottom:28px}
+.phase-badge{display:inline-flex;align-items:center;gap:7px;
+  padding:6px 18px;border-radius:30px;font-size:.72rem;font-weight:800;
+  letter-spacing:.12em;text-transform:uppercase;margin-bottom:14px}
+.phase-badge.easy{background:rgba(34,197,94,.12);border:1px solid rgba(34,197,94,.3);color:var(--g2)}
+.phase-badge.medium{background:rgba(251,191,36,.12);border:1px solid rgba(251,191,36,.3);color:var(--gold)}
+.phase-badge.hard{background:rgba(248,113,113,.12);border:1px solid rgba(248,113,113,.3);color:var(--red)}
+.phase-badge.review{background:rgba(34,211,238,.12);border:1px solid rgba(34,211,238,.3);color:var(--cyan)}
+.phase-badge.descriptive{background:rgba(167,139,250,.12);border:1px solid rgba(167,139,250,.3);color:var(--violet)}
+.phase-title{font-size:1.55rem;font-weight:800;margin-bottom:6px}
+.phase-sub{font-size:.88rem;color:var(--text2)}
+
+/* MCQ CARD */
+.mcq-card{background:linear-gradient(135deg,rgba(15,20,23,.98),rgba(10,14,12,.98));
+  border:1px solid var(--br);border-radius:18px;padding:28px 30px;
+  box-shadow:var(--sh);margin-bottom:20px;animation:cardIn .28s ease}
+@keyframes cardIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.mcq-meta{display:flex;align-items:center;gap:8px;margin-bottom:16px}
+.q-num{font-size:.68rem;font-weight:800;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--muted);background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);
+  border-radius:6px;padding:3px 10px}
+.q-concept{font-size:.72rem;font-weight:700;color:var(--cyan);
+  background:rgba(34,211,238,.08);border:1px solid rgba(34,211,238,.15);
+  border-radius:6px;padding:3px 10px}
+.mcq-q{font-size:1.05rem;font-weight:600;line-height:1.6;margin-bottom:22px;color:var(--text)}
+.options{display:flex;flex-direction:column;gap:9px}
+.opt{background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.09);
+  border-radius:12px;padding:13px 16px;cursor:pointer;
+  display:flex;align-items:center;gap:13px;
+  font-size:.9rem;font-weight:500;color:var(--text2);
+  transition:all .15s;user-select:none}
+.opt:hover:not(.locked){background:rgba(34,197,94,.06);border-color:rgba(34,197,94,.25);color:var(--text)}
+.opt.selected{background:rgba(56,189,248,.08);border-color:rgba(56,189,248,.35);color:var(--sky)}
+.opt.correct{background:rgba(34,197,94,.1);border-color:var(--g1);color:var(--g2)}
+.opt.wrong{background:rgba(248,113,113,.09);border-color:rgba(248,113,113,.32);color:var(--red)}
+.opt.locked{cursor:default;pointer-events:none}
+.opt-label{width:28px;height:28px;border-radius:8px;border:1px solid rgba(255,255,255,.14);
+  display:flex;align-items:center;justify-content:center;
+  font-size:.75rem;font-weight:800;flex-shrink:0;transition:all .15s;color:var(--muted)}
+.opt.selected .opt-label{background:rgba(56,189,248,.18);border-color:var(--sky);color:var(--sky)}
+.opt.correct .opt-label{background:rgba(34,197,94,.2);border-color:var(--g1);color:var(--g2)}
+.opt.wrong   .opt-label{background:rgba(248,113,113,.18);border-color:var(--red);color:var(--red)}
+.opt-icon{margin-left:auto;font-size:1.15rem;opacity:0;transition:opacity .18s;flex-shrink:0}
+.opt.correct .opt-icon,.opt.wrong .opt-icon{opacity:1}
+
+/* BUTTONS */
+.submit-row{display:flex;justify-content:flex-end;margin-top:20px;gap:10px}
+.btn-primary{background:linear-gradient(135deg,#14532d,#22c55e);border:none;
+  border-radius:12px;padding:11px 28px;color:#050a07;font-weight:800;
+  font-size:.9rem;cursor:pointer;transition:opacity .15s}
+.btn-primary:hover{opacity:.88}
+.btn-primary:disabled{opacity:.3;cursor:default}
+.btn-retry{background:linear-gradient(135deg,#431407,#ea580c);border:none;
+  border-radius:12px;padding:11px 28px;color:#fff;font-weight:800;
+  font-size:.9rem;cursor:pointer;transition:opacity .15s}
+.btn-retry:hover{opacity:.88}
+
+/* SCORE CARD */
+.score-card{background:linear-gradient(135deg,rgba(15,20,23,.98),rgba(10,14,12,.98));
+  border:1px solid var(--br);border-radius:18px;padding:36px 32px;
+  text-align:center;box-shadow:var(--sh);animation:cardIn .4s ease}
+.score-ring{width:120px;height:120px;border-radius:50%;margin:0 auto 20px;
+  display:flex;flex-direction:column;align-items:center;justify-content:center}
+.score-ring.pass{border:3px solid var(--g1);background:rgba(34,197,94,.08);
+  box-shadow:0 0 32px rgba(34,197,94,.22)}
+.score-ring.fail{border:3px solid var(--red);background:rgba(248,113,113,.08);
+  box-shadow:0 0 32px rgba(248,113,113,.18)}
+.score-pct{font-size:2.2rem;font-weight:800}
+.score-ring.pass .score-pct{color:var(--g2)}
+.score-ring.fail .score-pct{color:var(--red)}
+.score-lbl{font-size:.65rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.score-msg{font-size:1.2rem;font-weight:800;margin-bottom:8px}
+.score-sub{font-size:.88rem;color:var(--text2);margin-bottom:26px}
+.score-actions{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
+
+/* ═══════════════════════════════════════════════════════════
+   REVIEW SCREEN
+   Two-column: chalkboard left, teacher video right
+   ═══════════════════════════════════════════════════════════ */
+.review-wrap{animation:cardIn .35s ease}
+.review-top{text-align:center;margin-bottom:20px}
+.review-counter{font-size:.7rem;font-weight:800;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--muted);margin-bottom:8px}
+.review-question{font-size:1rem;font-weight:700;color:var(--text);line-height:1.55;
+  max-width:680px;margin:0 auto;background:rgba(255,255,255,.03);
+  border:1px solid var(--br);border-radius:12px;padding:14px 18px}
+
+/* classroom layout */
+.rv-classroom{display:grid;grid-template-columns:52fr 48fr;gap:12px;
+  height:270px;margin-bottom:14px}
+
+/* chalkboard */
+.rv-board-frame{width:100%;height:100%;
+  background:linear-gradient(158deg,var(--frame3),var(--frame2) 42%,var(--frame1));
+  border-radius:var(--r);padding:8px 8px 12px;
+  box-shadow:var(--sh),inset 0 1px 0 rgba(255,255,255,.07);
+  display:flex;flex-direction:column;overflow:hidden}
+.rv-btop{display:flex;align-items:center;justify-content:space-between;padding:2px 7px 6px}
+.rv-blabel{font-family:"Caveat",cursive;font-size:1.05rem;font-weight:700;
+  color:var(--cyan);text-shadow:0 0 12px rgba(34,211,238,.45)}
+.rv-bsurface{flex:1;border-radius:9px;
+  background:linear-gradient(152deg,var(--board-hi),var(--board-bg2) 52%,var(--board-bg));
+  padding:10px 13px;position:relative;overflow:hidden;
+  box-shadow:inset 0 0 50px rgba(0,0,0,.55);
+  display:flex;flex-direction:column;min-height:0}
+.rv-bsurface::before{content:"";position:absolute;inset:8px 10px;
+  background:repeating-linear-gradient(transparent,transparent 34px,
+    rgba(255,255,255,.03) 34px,rgba(255,255,255,.03) 35px);pointer-events:none}
+.rv-blines{position:relative;z-index:2;flex:1;
+  display:flex;flex-direction:column;justify-content:space-evenly;
+  min-height:0;overflow:hidden}
+.rv-bl{font-family:"Caveat",cursive;line-height:1.3;
+  display:flex;align-items:baseline;flex-shrink:0;
+  opacity:0;transition:opacity .45s ease}
+.rv-bl.vis{opacity:1}
+.rv-bl-bul{flex-shrink:0;margin-right:6px;font-size:.9rem;opacity:.85}
+.rv-bl-txt{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+.rv-btray{height:9px;margin-top:5px;
+  background:linear-gradient(180deg,#6b4218,#4a2c0a);border-radius:0 0 4px 4px;
+  display:flex;align-items:center;padding-left:7px;gap:5px}
+.chalk{height:5px;border-radius:3px;opacity:.9}
+
+/* teacher video */
+.rv-teacher{border-radius:var(--r);overflow:hidden;position:relative;
+  background:#000;box-shadow:var(--sh)}
+.rv-teacher video{width:100%;height:100%;object-fit:cover;object-position:center top}
+.rv-teacher::after{content:"";position:absolute;inset:0;pointer-events:none;
+  background:linear-gradient(to top,rgba(7,9,10,.88) 0%,transparent 48%),
+             linear-gradient(to right,rgba(7,9,10,.1),transparent 20%)}
+.rv-live{position:absolute;top:10px;left:10px;z-index:5;
+  display:flex;align-items:center;gap:5px;padding:4px 10px;
+  background:rgba(251,191,36,.14);border:1px solid rgba(251,191,36,.32);
+  border-radius:20px;font-size:.6rem;font-weight:800;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--gold)}
+.rv-live-dot{width:6px;height:6px;border-radius:50%;background:var(--gold);
+  box-shadow:0 0 6px var(--gold);animation:blink 1s ease infinite alternate}
+@keyframes blink{to{opacity:.18}}
+.rv-sub-wrap{position:absolute;bottom:8px;left:0;right:0;z-index:5;
+  padding:4px 12px;text-align:center;pointer-events:none}
+.rv-sub{background:rgba(0,0,0,.84);backdrop-filter:blur(8px);
+  border-left:3px solid var(--g2);border-radius:8px;padding:7px 14px;
+  display:inline-block;max-width:96%;font-size:.82rem;font-weight:500;
+  line-height:1.4;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.9);min-height:1.2em}
+
+/* answer comparison boxes */
+.rv-answers{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px}
+.rv-ans{padding:13px 16px;border-radius:12px}
+.rv-ans.wrong{background:rgba(248,113,113,.07);border:1px solid rgba(248,113,113,.24)}
+.rv-ans.right{background:rgba(34,197,94,.07);border:1px solid rgba(34,197,94,.22)}
+.rv-ans-lbl{font-size:.63rem;font-weight:800;letter-spacing:.1em;
+  text-transform:uppercase;margin-bottom:5px}
+.rv-ans.wrong .rv-ans-lbl{color:var(--red)}
+.rv-ans.right .rv-ans-lbl{color:var(--g2)}
+.rv-ans-txt{font-size:.9rem;font-weight:600;color:var(--text);line-height:1.4}
+
+/* nav row */
+.rv-nav{display:flex;align-items:center;justify-content:space-between;
+  padding-top:14px;border-top:1px solid var(--br2)}
+.rv-dots{display:flex;gap:7px;align-items:center}
+.rv-dot{width:8px;height:8px;border-radius:50%;
+  background:rgba(255,255,255,.14);transition:all .22s}
+.rv-dot.done{background:var(--g1);box-shadow:0 0 6px rgba(34,197,94,.45)}
+.rv-dot.cur{background:var(--cyan);box-shadow:0 0 7px rgba(34,211,238,.5);transform:scale(1.3)}
+
+/* MODE TOGGLE BUTTONS */
+.mode-btn{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);
+  border-radius:9px;padding:7px 18px;color:var(--muted);font-size:.8rem;font-weight:700;
+  cursor:pointer;transition:all .15s;letter-spacing:.04em}
+.mode-btn:hover{border-color:var(--br);color:var(--text)}
+.mode-btn.active{background:rgba(34,197,94,.12);border-color:rgba(34,197,94,.35);color:var(--g2)}
+
+/* STUDY NOTE CARDS */
+.study-note-card{background:rgba(255,255,255,.02);border:1px solid rgba(34,197,94,.14);
+  border-radius:13px;padding:18px 20px;margin-bottom:12px;
+  transition:border-color .2s}
+.study-note-card:hover{border-color:rgba(34,197,94,.3)}
+.sn-title{font-size:.88rem;font-weight:800;color:var(--g2);margin-bottom:8px;
+  display:flex;align-items:center;gap:7px}
+.sn-body{font-size:.84rem;color:var(--text2);line-height:1.75}
+.sn-body br{display:block;margin:1px 0}
+
+/* DESCRIPTIVE */
+.desc-card{background:linear-gradient(135deg,rgba(15,20,23,.98),rgba(10,14,12,.98));
+  border:1px solid rgba(167,139,250,.18);border-radius:18px;padding:28px 30px;
+  box-shadow:var(--sh);margin-bottom:22px;animation:cardIn .3s ease}
+.desc-q{font-size:1rem;font-weight:600;line-height:1.65;margin-bottom:16px;color:var(--text)}
+textarea{width:100%;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);
+  border-radius:11px;padding:14px 16px;color:var(--text);font-size:.9rem;
+  font-family:"DM Sans",sans-serif;line-height:1.6;resize:vertical;min-height:120px;
+  outline:none;transition:border-color .18s}
+textarea:focus{border-color:rgba(167,139,250,.4)}
+.eval-result{margin-top:16px;background:rgba(167,139,250,.06);
+  border:1px solid rgba(167,139,250,.18);border-radius:12px;
+  padding:16px 18px;font-size:.86rem;line-height:1.65;color:var(--text2);animation:cardIn .25s ease}
+.eval-result strong{color:var(--violet)}
+
+/* REPORT */
+.report-wrap{animation:cardIn .5s ease}
+.report-hero{text-align:center;padding:36px 24px 28px;
+  background:linear-gradient(135deg,rgba(15,20,23,.98),rgba(10,14,12,.98));
+  border:1px solid var(--br);border-radius:18px;margin-bottom:18px;box-shadow:var(--sh)}
+.report-hero h1{font-size:2rem;font-weight:800;margin-bottom:6px}
+.report-hero p{font-size:.9rem;color:var(--text2)}
+.stats-row{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:18px}
+.stat-box{background:rgba(255,255,255,.02);border:1px solid var(--br);
+  border-radius:14px;padding:18px;text-align:center}
+.stat-num{font-size:1.8rem;font-weight:800;color:var(--g2)}
+.stat-lbl{font-size:.68rem;font-weight:700;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--muted);margin-top:2px}
+.report-section{background:rgba(255,255,255,.02);border:1px solid var(--br);
+  border-radius:14px;padding:20px 22px;margin-bottom:14px}
+.report-section h3{font-size:.8rem;font-weight:800;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--cyan);margin-bottom:12px}
+.report-body{font-size:.9rem;line-height:1.75;color:var(--text2);white-space:pre-wrap}
+.report-level{display:flex;align-items:center;justify-content:space-between;
+  padding:10px 14px;border-radius:10px;background:rgba(255,255,255,.03);
+  border:1px solid rgba(255,255,255,.06);margin-bottom:8px}
+.rl-name{font-size:.82rem;font-weight:700;text-transform:capitalize}
+.rl-score{font-size:.82rem;font-weight:800;padding:3px 12px;border-radius:20px}
+.rl-score.good{background:rgba(34,197,94,.12);color:var(--g2)}
+.rl-score.mid {background:rgba(251,191,36,.12);color:var(--gold)}
+.rl-score.low {background:rgba(248,113,113,.12);color:var(--red)}
+.home-btn{display:flex;align-items:center;justify-content:center;gap:8px;
+  margin-top:28px;padding:13px 32px;background:linear-gradient(135deg,#0c3a1e,#22c55e);
+  border:none;border-radius:14px;color:#050a07;font-weight:800;font-size:.95rem;
+  cursor:pointer;transition:opacity .15s;text-decoration:none}
+.home-btn:hover{opacity:.88}
+
+/* MISC */
+.loading{display:flex;align-items:center;gap:10px;color:var(--muted);font-size:.85rem;padding:14px 0}
+.spin{width:20px;height:20px;border:2px solid rgba(34,197,94,.15);
+  border-top-color:var(--g1);border-radius:50%;animation:spin .7s linear infinite;flex-shrink:0}
+@keyframes spin{to{transform:rotate(360deg)}}
+#toast{position:fixed;bottom:24px;right:24px;background:rgba(5,8,9,.98);
+  border:1px solid var(--g1);border-radius:13px;padding:9px 20px;color:var(--text);
+  font-size:.8rem;font-weight:800;box-shadow:var(--sh);
+  opacity:0;transform:translateY(7px);transition:all .2s;pointer-events:none;z-index:200}
+#toast.on{opacity:1;transform:translateY(0)}
+</style>
 </head>
 <body>
-    <!-- Hamburger Menu -->
-    <button class="menu-toggle" id="menu-toggle">
-        <i class="fas fa-bars"></i>
-    </button>
-    
-    <div class="menu-overlay" id="menu-overlay"></div>
-    
-    <nav class="hamburger-menu" id="hamburger-menu">
-        <div class="menu-header">
-            <h3 class="menu-title">Navigation</h3>
-            <button class="close-menu" id="close-menu">
-                <i class="fas fa-times"></i>
-            </button>
-        </div>
-        <div class="menu-nav">
-            <a href="/" class="menu-link">
-                <i class="fas fa-home"></i> Home
-            </a>
-            <a href="/lesson" class="menu-link">
-                <i class="fas fa-chalkboard-teacher"></i> Lesson
-            </a>
-            <a href="/quiz" class="menu-link active">
-                <i class="fas fa-clipboard-question"></i> Quiz
-            </a>
-            <a href="/report" class="menu-link">
-                <i class="fas fa-chart-line"></i> Report
-            </a>
-        </div>
-    </nav>
 
-    <div class="main-content">
-        <div class="container">
-            <div class="quiz-container">
-                <div class="quiz-header">
-                    <h1>Assessment Time</h1>
-                    <div class="difficulty-badge" id="difficulty-badge">Easy</div>
-                    <div class="quiz-progress" id="quiz-progress">Question 1 of 3</div>
-                </div>
-                
-                <div class="question-card" id="question-card">
-                    <div class="question-number" id="question-number">Question 1</div>
-                    <h2 class="question-text" id="question-text">Loading question...</h2>
-                    
-                    <ul class="options-list" id="options-list">
-                        <!-- Options will be inserted here -->
-                    </ul>
-                    
-                    <div class="feedback-box hidden" id="feedback-box">
-                        <!-- Single feedback for correct answers -->
-                    </div>
-                    
-                    <div class="feedback-container hidden" id="feedback-container">
-                        <div class="feedback-wrong-box">
-                            <h4><i class="fas fa-times-circle"></i> Why Your Answer is Incorrect</h4>
-                            <p id="wrong-explanation"></p>
-                        </div>
-                        
-                        <div class="feedback-correct-box">
-                            <h4><i class="fas fa-check-circle"></i> The Correct Answer</h4>
-                            <p id="correct-explanation"></p>
-                        </div>
-                    </div>
-                    
-                    <div class="quiz-actions">
-                        <button class="btn btn-primary" id="submit-answer" disabled>
-                            Submit Answer
-                        </button>
-                    </div>
-                </div>
-                
-                <!-- Level Complete Card -->
-                <div class="question-card hidden" id="level-complete-card">
-                    <div style="text-align: center;">
-                        <div class="welcome-icon" style="margin: 0 auto var(--spacing-lg);">
-                            <i class="fas fa-trophy"></i>
-                        </div>
-                        <h2 id="level-result-title">Level Complete!</h2>
-                        <p id="level-result-message" style="font-size: 1.25rem; margin: var(--spacing-lg) 0; color: var(--text-muted);"></p>
-                        
-                        <div class="stats-grid" style="margin: var(--spacing-xl) 0;">
-                            <div class="stat-card">
-                                <div class="stat-value" id="level-score">0%</div>
-                                <div class="stat-label">Score</div>
-                            </div>
-                            <div class="stat-card">
-                                <div class="stat-value" id="level-correct">0</div>
-                                <div class="stat-label">Correct</div>
-                            </div>
-                            <div class="stat-card">
-                                <div class="stat-value" id="level-total">0</div>
-                                <div class="stat-label">Total</div>
-                            </div>
-                        </div>
-                        
-                        <div id="remediation-section" class="hidden" style="text-align: left; background: rgba(245, 158, 11, 0.1); padding: var(--spacing-lg); border-radius: 12px; margin: var(--spacing-lg) 0;">
-                            <h3 style="color: #f59e0b; margin-bottom: var(--spacing-md);">
-                                <i class="fas fa-book-open"></i> Review These Concepts
-                            </h3>
-                            <div id="remediation-content"></div>
-                        </div>
-                        
-                        <button class="btn btn-primary" id="continue-quiz">
-                            Continue to Next Level
-                        </button>
-                        
-                        <button class="btn btn-primary hidden" id="retry-level">
-                            <i class="fas fa-redo"></i> Retry This Level
-                        </button>
-                    </div>
-                </div>
-                
-                <!-- Descriptive Questions -->
-                <div class="question-card hidden" id="descriptive-card">
-                    <div style="text-align: center; margin-bottom: var(--spacing-xl);">
-                        <div class="welcome-icon" style="margin: 0 auto var(--spacing-lg); background: linear-gradient(135deg, #8b5cf6, #ec4899);">
-                            <i class="fas fa-pen"></i>
-                        </div>
-                        <h2>Final Evaluation</h2>
-                        <p style="color: var(--text-muted); font-size: 1.125rem;">Show us what you've learned in your own words</p>
-                    </div>
-                    
-                    <div id="descriptive-questions">
-                        <!-- Descriptive questions will be inserted here -->
-                    </div>
-                    
-                    <button class="btn btn-primary" id="submit-descriptive">
-                        Submit Final Answers
-                    </button>
-                </div>
-            </div>
+<div id="topbar">
+  <a class="back-btn" href="/">← Classroom</a>
+  <div class="logo"><div class="logo-gem">📚</div>EduAI</div>
+  <div id="phase-label">Loading quiz…</div>
+  <div class="xp-badge" id="xp-badge">⭐ 0 XP</div>
+</div>
+<div id="progress-strip"><div id="progress-fill"></div></div>
+
+<div id="main">
+  <div id="content">
+    <div style="text-align:center;padding:60px 0;color:var(--muted)">
+      <div class="spin" style="margin:0 auto 16px;width:36px;height:36px;border-width:3px"></div>
+      <div>Loading your quiz…</div>
+    </div>
+  </div>
+</div>
+<div id="toast"></div>
+
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+
+/* ════════════════════════════════════════════════
+   STATE
+   ════════════════════════════════════════════════ */
+const S = {
+  phase:       'easy',
+  mcqs:        {},
+  curQIdx:     0,
+  chosen:      null,
+  locked:      false,
+  results:     { easy:[], medium:[], hard:[] },
+  xp:          0,
+  descAnswers: [],
+  descEvals:   [],
+  totalQ:      0,
+  doneQ:       0,
+};
+
+const PASS = 80; // percent
+
+const DESC_QS = [
+  "In your own words, explain the most important concept you learned today. Give a real-life example.",
+  "Pick one topic from the lesson. Explain why it matters and how it connects to something you see around you."
+];
+
+/* ════════════════════════════════════════════════
+   HELPERS
+   ════════════════════════════════════════════════ */
+function toast(msg,dur=2800){const e=$('toast');e.textContent=msg;e.classList.add('on');clearTimeout(e._t);e._t=setTimeout(()=>e.classList.remove('on'),dur);}
+function setProgress(p){$('progress-fill').style.width=Math.min(100,p)+'%';}
+function setPhaseLabel(t){$('phase-label').innerHTML='<span>'+t+'</span>';}
+function setXP(n){S.xp=n;$('xp-badge').textContent='⭐ '+n+' XP';}
+function render(h){$('content').innerHTML=h;}
+function scoreClass(p){return p>=80?'good':p>=50?'mid':'low';}
+function dc(d){return d==='easy'?'easy':d==='medium'?'medium':'hard';}
+
+const PHASE_LABEL = {easy:'🟢 Easy Round',medium:'🟡 Medium Round',hard:'🔴 Hard Round'};
+const PHASE_SUB   = {easy:'Direct recall — what you just learned',medium:'Apply and connect concepts',hard:'Inference and higher-order thinking'};
+
+/* ════════════════════════════════════════════════
+   TTS — sentence-chained with subtitle sync
+   ════════════════════════════════════════════════ */
+const TTS = (() => {
+  let voice=null, live=false;
+
+  function _pick(){
+    const vs=speechSynthesis.getVoices();
+    voice=vs.find(v=>/Lekha|Neerja/i.test(v.name))||vs.find(v=>v.lang==='en-IN')||vs.find(v=>v.lang.startsWith('en'))||vs[0]||null;
+  }
+  function init(){
+    if(!window.speechSynthesis)return;
+    if(speechSynthesis.onvoiceschanged!==undefined)speechSynthesis.onvoiceschanged=_pick;
+    _pick();
+  }
+  function stop(){live=false;if(window.speechSynthesis)speechSynthesis.cancel();}
+
+  function speakText(text, onDone, subEl){
+    stop();
+    if(!window.speechSynthesis||!text){if(onDone)onDone();return;}
+    const sents=(text.match(/[^.!?]+[.!?]+/g)||[text]).map(s=>s.trim()).filter(Boolean);
+    live=true;
+    let idx=0;
+    function next(){
+      if(!live||idx>=sents.length){live=false;if(onDone)onDone();return;}
+      const t=sents[idx];
+      if(subEl){subEl.textContent=t;}
+      const u=new SpeechSynthesisUtterance(t);
+      u.rate=0.93;u.pitch=1.0;u.volume=1.0;
+      if(voice)u.voice=voice;
+      u.onend=()=>{idx++;next();};
+      u.onerror=e=>{if(e.error==='interrupted'||e.error==='canceled')return;idx++;next();};
+      speechSynthesis.speak(u);
+    }
+    next();
+  }
+
+  return{init,stop,speakText,get live(){return live;}};
+})();
+
+/* ════════════════════════════════════════════════
+   INIT
+   ════════════════════════════════════════════════ */
+async function init(){
+  try{
+    const[easy,medium,hard]=await Promise.all([
+      fetch('/api/mcqs/easy').then(r=>r.json()),
+      fetch('/api/mcqs/medium').then(r=>r.json()),
+      fetch('/api/mcqs/hard').then(r=>r.json()),
+    ]);
+    S.mcqs={easy,medium,hard};
+    S.totalQ=easy.length+medium.length+hard.length+DESC_QS.length;
+    if(!easy.length&&!medium.length&&!hard.length){
+      render('<div style="text-align:center;padding:60px;color:var(--muted)">⚠️ No MCQs found — run step_5_mcq_generation.py first.</div>');
+      return;
+    }
+    startPhase('easy');
+  }catch{
+    render('<div style="text-align:center;padding:60px;color:var(--red)">⚠️ Could not load quiz. Make sure server is running.</div>');
+  }
+}
+
+/* ════════════════════════════════════════════════
+   MCQ PHASE — just tick/cross, no inline feedback
+   ════════════════════════════════════════════════ */
+function startPhase(d){
+  S.phase=d; S.curQIdx=0; S.chosen=null; S.locked=false;
+  setPhaseLabel(PHASE_LABEL[d]);
+  showMCQ();
+}
+
+function showMCQ(){
+  const qs=S.mcqs[S.phase];
+  if(!qs||!qs.length){advanceAfterPhase();return;}
+  if(S.curQIdx>=qs.length){
+    const wrong  = S.results[S.phase].filter(r=>!r.correct);
+    const pct    = S.results[S.phase].length
+                   ? Math.round(S.results[S.phase].filter(r=>r.correct).length / S.results[S.phase].length * 100) : 0;
+    const passed = pct >= PASS;
+    if(!passed && wrong.length>0){
+      showReview(wrong, ()=>{});   // retry button is inside review screen
+    } else {
+      showPhaseScore();             // passed — show score + Next Level
+    }
+    return;
+  }
+  const q=qs[S.curQIdx];
+  setProgress(Math.round(S.doneQ/S.totalQ*100));
+
+  render(`
+    <div class="phase-header">
+      <div class="phase-badge ${dc(S.phase)}">${PHASE_LABEL[S.phase]}</div>
+      <div class="phase-title">Question ${S.curQIdx+1} of ${qs.length}</div>
+      <div class="phase-sub">${PHASE_SUB[S.phase]}</div>
+    </div>
+    <div class="mcq-card">
+      <div class="mcq-meta">
+        <span class="q-num">Q${S.curQIdx+1}/${qs.length}</span>
+        ${q.concept?'<span class="q-concept">'+q.concept+'</span>':''}
+      </div>
+      <div class="mcq-q">${q.question}</div>
+      <div class="options">
+        ${q.options.map((o,i)=>`
+          <div class="opt" id="opt${i}" onclick="selectOpt(${i})">
+            <span class="opt-label">${String.fromCharCode(65+i)}</span>
+            <span style="flex:1">${o}</span>
+            <span class="opt-icon" id="icon${i}"></span>
+          </div>`).join('')}
+      </div>
+    </div>
+    <div class="submit-row">
+      <button class="btn-primary" id="submit-btn" onclick="submitAnswer()" disabled>Submit Answer</button>
+    </div>
+  `);
+  S.chosen=null; S.locked=false;
+}
+
+function selectOpt(i){
+  if(S.locked)return;
+  S.chosen=i;
+  document.querySelectorAll('.opt').forEach((el,idx)=>el.classList.toggle('selected',idx===i));
+  $('submit-btn').disabled=false;
+}
+
+async function submitAnswer(){
+  if(S.chosen===null||S.locked)return;
+  S.locked=true;
+  $('submit-btn').disabled=true;
+  document.querySelectorAll('.opt').forEach(el=>el.classList.add('locked'));
+
+  try{
+    const res=await fetch('/api/check_answer',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({question_index:S.curQIdx,difficulty:S.phase,chosen_index:S.chosen})
+    });
+    const data=await res.json();
+
+    // Green = correct answer, Red = wrong chosen option. Nothing else.
+    document.querySelectorAll('.opt').forEach((el,i)=>{
+      if(i===data.correct_index){el.classList.add('correct');$('icon'+i).textContent='✅';}
+      else if(i===S.chosen&&!data.correct){el.classList.add('wrong');$('icon'+i).textContent='❌';}
+    });
+
+    if(data.correct) setXP(S.xp+10);
+
+    // Store everything for end-of-level review
+    const q=S.mcqs[S.phase][S.curQIdx];
+    S.results[S.phase].push({
+      question:          q.question,
+      options:           q.options,
+      correct:           data.correct,
+      chosen_idx:        S.chosen,
+      correct_idx:       data.correct_index,
+      chosen_text:       q.options[S.chosen]||'',
+      correct_text:      data.correct_text||(q.options[data.correct_index]||''),
+      board_hint:        data.board_hint||'',
+      short_explanation: data.short_explanation||'',
+      teacher_feedback:  data.teacher_feedback||'',
+    });
+    S.doneQ++;
+
+    // Swap Submit → Next so student controls pacing
+    const btn=$('submit-btn');
+    btn.textContent='Next →'; btn.disabled=false;
+    btn.onclick=()=>{ S.curQIdx++; S.chosen=null; S.locked=false; showMCQ(); };
+
+  }catch{
+    const q=S.mcqs[S.phase][S.curQIdx];
+    S.results[S.phase].push({question:q.question,options:q.options,correct:false,
+      chosen_idx:S.chosen,correct_idx:0,chosen_text:q.options[S.chosen]||'',
+      correct_text:q.options[0]||'',board_hint:'',short_explanation:'',teacher_feedback:''});
+    S.doneQ++;
+    const btn=$('submit-btn');
+    btn.textContent='Next →'; btn.disabled=false;
+    btn.onclick=()=>{ S.curQIdx++; S.chosen=null; S.locked=false; showMCQ(); };
+  }
+}
+
+/* ════════════════════════════════════════════════
+   REVIEW SCREEN — one screen, all wrong answers
+   Teacher video loops. TTS speaks each explanation.
+   Board shows all wrong→correct points.
+   One Retry button at the end.
+   ════════════════════════════════════════════════ */
+function showReview(wrongItems, onAllDone){
+  TTS.stop();
+  setPhaseLabel('🎙️ Teacher Review');
+
+  const total = wrongItems.length;
+
+  // Build board lines — all wrong answers at once
+  // Each mistake: Q label, wrong answer, correct answer, hint
+  const bLines = [];
+  wrongItems.forEach((item, i) => {
+    bLines.push({ text: 'Q'+(i+1)+': '+(item.question.slice(0,38)+'…'), color:'#22d3ee', size:'1rem'   });
+    bLines.push({ text: '✗ '+(item.chosen_text||'').slice(0,40),         color:'#f87171', size:'.92rem' });
+    bLines.push({ text: '✓ '+(item.correct_text||'').slice(0,40),        color:'#4ade80', size:'.92rem' });
+    if(item.board_hint)
+      bLines.push({ text: '💡 '+(item.board_hint).slice(0,50),           color:'#fbbf24', size:'.88rem' });
+  });
+
+  // Build a single spoken script covering every mistake
+  const script = wrongItems.map((item, i) => {
+    const fb = item.teacher_feedback || item.short_explanation ||
+      ('The correct answer is ' + item.correct_text + '. ' + (item.board_hint||''));
+    return 'Question '+(i+1)+'. '+fb.trim();
+  }).join(' ');
+
+  render(`
+    <div class="review-wrap">
+      <div class="review-top">
+        <div class="review-counter">📋 Reviewing ${total} mistake${total>1?'s':''} from this level</div>
+        <div style="font-size:.82rem;color:var(--text2);margin-top:6px">
+          Listen carefully — Lekha will explain each one
         </div>
+      </div>
+
+      <div class="rv-classroom">
+        <!-- CHALKBOARD -->
+        <div class="rv-board-frame">
+          <div class="rv-btop">
+            <span class="rv-blabel">Corrections</span>
+            <span style="font-size:.58rem;color:var(--muted);font-weight:700;letter-spacing:.08em">BOARD</span>
+          </div>
+          <div class="rv-bsurface">
+            <div class="rv-blines" id="rv-blines"></div>
+          </div>
+          <div class="rv-btray">
+            <div class="chalk" style="width:14px;background:#f0ece0"></div>
+            <div class="chalk" style="width:11px;background:#f87171"></div>
+            <div class="chalk" style="width:13px;background:#4ade80"></div>
+          </div>
+        </div>
+
+        <!-- TEACHER VIDEO — loops while speaking -->
+        <div class="rv-teacher">
+          <div class="rv-live"><div class="rv-live-dot"></div>LEKHA SPEAKING</div>
+          <video id="rv-vid" muted playsinline loop autoplay>
+            <source src="/static/teacher_video.mp4" type="video/mp4">
+          </video>
+          <div class="rv-sub-wrap">
+            <div class="rv-sub" id="rv-sub">Preparing explanation…</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- WRONG→CORRECT ANSWER PAIRS -->
+      <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px" id="rv-pairs">
+        ${wrongItems.map((item,i)=>`
+          <div style="background:rgba(255,255,255,.02);border:1px solid var(--br);border-radius:12px;padding:12px 16px">
+            <div style="font-size:.72rem;font-weight:800;color:var(--cyan);letter-spacing:.08em;margin-bottom:8px">
+              Q${i+1}: ${item.question.slice(0,80)}${item.question.length>80?'…':''}
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+              <div style="background:rgba(248,113,113,.07);border:1px solid rgba(248,113,113,.22);border-radius:9px;padding:10px 13px">
+                <div style="font-size:.62rem;font-weight:800;letter-spacing:.1em;color:var(--red);margin-bottom:4px">❌ YOUR ANSWER</div>
+                <div style="font-size:.88rem;font-weight:600;color:var(--text)">${item.chosen_text||'—'}</div>
+              </div>
+              <div style="background:rgba(34,197,94,.07);border:1px solid rgba(34,197,94,.2);border-radius:9px;padding:10px 13px">
+                <div style="font-size:.62rem;font-weight:800;letter-spacing:.1em;color:var(--g2);margin-bottom:4px">✅ CORRECT ANSWER</div>
+                <div style="font-size:.88rem;font-weight:600;color:var(--text)">${item.correct_text||'—'}</div>
+              </div>
+            </div>
+          </div>`).join('')}
+      </div>
+
+      <!-- RETRY BUTTON — disabled until TTS finishes -->
+      <div style="text-align:center;padding-top:8px">
+        <button class="btn-retry" id="rv-retry" onclick="retryPhase()" disabled
+          style="font-size:1rem;padding:13px 36px">
+          🔄 Retry This Level
+        </button>
+        <div style="font-size:.75rem;color:var(--muted);margin-top:10px" id="rv-waiting">
+          ⏳ Listen to the full explanation first…
+        </div>
+      </div>
+    </div>
+  `);
+
+  // Start video
+  const vid = $('rv-vid');
+  if(vid){ vid.playbackRate=1.0; vid.play().catch(()=>{}); }
+
+  // Write board lines with stagger
+  const linesEl = $('rv-blines');
+  // Font size: fit all lines
+  const fs = bLines.length <= 6 ? '.95rem' : bLines.length <= 9 ? '.82rem' : '.72rem';
+  bLines.forEach((b,i)=>{
+    const row = document.createElement('div');
+    row.className = 'rv-bl';
+    row.style.cssText = `color:${b.color};font-size:${b.size||fs}`;
+    row.innerHTML = `<span class="rv-bl-txt">${b.text}</span>`;
+    linesEl.appendChild(row);
+    setTimeout(()=>row.classList.add('vis'), i*180 + 300);
+  });
+
+  // Speak full script. Subtitles sync per sentence.
+  const subEl = $('rv-sub');
+  setTimeout(()=>{
+    TTS.speakText(script, ()=>{
+      // Done speaking — stop video, enable retry
+      if(vid) vid.pause();
+      const btn = $('rv-retry');
+      const wait = $('rv-waiting');
+      if(btn){ btn.disabled=false; btn.style.opacity='1'; }
+      if(wait) wait.textContent = '✅ Ready — click to retry or scroll up to review';
+    }, subEl);
+  }, 600);
+}
+
+/* ════════════════════════════════════════════════
+   PHASE SCORE — pass path only (fail goes via review→retry)
+   ════════════════════════════════════════════════ */
+function showPhaseScore(){
+  TTS.stop();
+  const res    = S.results[S.phase];
+  const correct= res.filter(r=>r.correct).length;
+  const total  = res.length;
+  const pct    = total ? Math.round(correct/total*100) : 0;
+  const passed = pct >= PASS;
+
+  setPhaseLabel(PHASE_LABEL[S.phase]+' — Results');
+  setProgress(Math.round(S.doneQ/S.totalQ*100));
+
+  if(!passed){
+    // Should have gone through review already — show review then retry
+    const wrong = res.filter(r=>!r.correct);
+    if(wrong.length) showReview(wrong, ()=>{});
+    else renderScoreCard(pct, correct, total, false);
+    return;
+  }
+  renderScoreCard(pct, correct, total, true);
+}
+
+function renderScoreCard(pct, correct, total, passed){
+  render(`
+    <div class="phase-header">
+      <div class="phase-badge ${dc(S.phase)}">${PHASE_LABEL[S.phase]}</div>
+    </div>
+    <div class="score-card">
+      <div class="score-ring ${passed?'pass':'fail'}">
+        <div class="score-pct">${pct}%</div>
+        <div class="score-lbl">${correct}/${total} correct</div>
+      </div>
+      <div class="score-msg">${passed?'🎉 Level Passed!':'😅 Not Quite There Yet'}</div>
+      <div class="score-sub">${passed
+        ?'Great work! Moving to the next level.'
+        :"You've seen the corrections — give it another try!"}</div>
+      <div class="score-actions">
+        ${passed
+          ?`<button class="btn-primary" onclick="advanceAfterPhase()">Next Level →</button>`
+          :`<button class="btn-retry"   onclick="retryPhase()">🔄 Retry This Level</button>`}
+      </div>
+    </div>
+  `);
+  TTS.speakText(passed
+    ?(pct===100?'Perfect score! Excellent work!':'Well done! You passed. Moving to the next level.')
+    :"Don't worry, you have seen the corrections. Give it another try — you can do it!",
+    null, null);
+}
+
+function retryPhase(){
+  TTS.stop();
+  const vid=$('rv-vid'); if(vid) vid.pause();
+  S.doneQ=Math.max(0, S.doneQ - S.results[S.phase].length);
+  S.results[S.phase]=[];
+  S.curQIdx=0; S.chosen=null; S.locked=false;
+  startPhase(S.phase);
+}
+
+function advanceAfterPhase(){
+  TTS.stop();
+  const order=['easy','medium','hard'];
+  const next=order[order.indexOf(S.phase)+1];
+  if(next&&S.mcqs[next]&&S.mcqs[next].length) startPhase(next);
+  else startDescriptive();
+}
+
+/* ════════════════════════════════════════════════
+   DESCRIPTIVE — collect both answers first, then evaluate together
+   Type OR record voice (Web Speech API)
+   ════════════════════════════════════════════════ */
+function startDescriptive(){
+  TTS.stop();
+  S.phase       = 'descriptive';
+  S.descAnswers = ['', ''];
+  S.descEvals   = [];
+  setPhaseLabel('💬 Written Round');
+  showDesc(0);
+}
+
+function showDesc(idx){
+  if(idx >= DESC_QS.length){ runDescEval(); return; }
+  setProgress(Math.round(S.doneQ / S.totalQ * 100));
+  const hasAns = (S.descAnswers[idx]||'').trim().length >= 10;
+
+  render(`
+    <div class="phase-header">
+      <div class="phase-badge descriptive">💬 Written Round</div>
+      <div class="phase-title">Question ${idx+1} of ${DESC_QS.length}</div>
+      <div class="phase-sub">Explain in your own words — no single right answer!</div>
+    </div>
+    <div class="desc-card">
+      <div class="desc-q">${DESC_QS[idx]}</div>
+
+      <!-- Toggle: Type / Record -->
+      <div style="display:flex;gap:8px;margin-bottom:14px">
+        <button id="mode-type" class="mode-btn active" onclick="setDescMode('type',${idx})">✏️ Type</button>
+        <button id="mode-rec"  class="mode-btn"        onclick="setDescMode('rec',${idx})">🎤 Record</button>
+      </div>
+
+      <!-- TYPE panel -->
+      <div id="type-panel">
+        <textarea id="desc-ans" placeholder="Start writing here… (aim for 2–4 sentences with an example)"
+          oninput="S.descAnswers[${idx}]=this.value;_descCheckBtn()"
+        >${S.descAnswers[idx]||''}</textarea>
+      </div>
+
+      <!-- RECORD panel (hidden by default) -->
+      <div id="rec-panel" style="display:none">
+        <div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.09);
+          border-radius:12px;padding:20px;text-align:center">
+          <button id="rec-btn" onclick="Rec.toggle(${idx})"
+            style="background:rgba(34,197,94,.14);border:1px solid rgba(34,197,94,.3);
+            border-radius:50%;width:64px;height:64px;font-size:1.6rem;cursor:pointer;
+            transition:all .2s;margin-bottom:12px">🎤</button>
+          <div id="rec-status" style="font-size:.8rem;color:var(--muted);margin-bottom:10px">
+            Click to start recording
+          </div>
+          <div id="rec-transcript" style="background:rgba(0,0,0,.3);border-radius:9px;
+            padding:12px;min-height:60px;font-size:.88rem;color:var(--text2);
+            line-height:1.6;text-align:left;white-space:pre-wrap"
+          >${S.descAnswers[idx]||'Your spoken answer will appear here…'}</div>
+        </div>
+      </div>
     </div>
 
-    <!-- Loading Modal -->
-    <div class="progress-screen hidden" id="evaluation-loading">
-        <div class="progress-card">
-            <div class="progress-header">
-                <div class="progress-spinner"></div>
-                <h2 class="progress-title" id="loading-title">Evaluating Your Answer</h2>
-                <p class="progress-message" id="loading-message">We hope you've performed well...</p>
-            </div>
-        </div>
+    <div class="submit-row">
+      <button class="btn-primary" id="desc-submit" onclick="advanceDesc(${idx})" ${hasAns?'':' disabled'}>
+        ${idx+1 < DESC_QS.length ? 'Next Question →' : 'Submit Answers 🎓'}
+      </button>
     </div>
+  `);
+}
 
-    <script src="{{ url_for('static', filename='js/quiz.js') }}"></script>
+function _descCheckBtn(){
+  const idx = parseInt($('desc-submit').getAttribute('onclick').match(/\d+/)[0]);
+  const ta  = $('desc-ans');
+  if(ta) S.descAnswers[idx] = ta.value;
+  $('desc-submit').disabled = (S.descAnswers[idx]||'').trim().length < 10;
+}
+
+function setDescMode(mode, idx){
+  const typeBtn = $('mode-type'), recBtn = $('mode-rec');
+  const typePanel = $('type-panel'), recPanel = $('rec-panel');
+  if(mode === 'type'){
+    typeBtn.classList.add('active'); recBtn.classList.remove('active');
+    typePanel.style.display = ''; recPanel.style.display = 'none';
+    Rec.stop();
+  } else {
+    recBtn.classList.add('active'); typeBtn.classList.remove('active');
+    typePanel.style.display = 'none'; recPanel.style.display = '';
+  }
+}
+
+function advanceDesc(idx){
+  const ans = (S.descAnswers[idx]||'').trim();
+  if(ans.length < 10) return;
+  S.descAnswers[idx] = ans;
+  S.doneQ++;
+  Rec.stop();
+  showDesc(idx + 1);
+}
+
+/* ── Voice recorder ── */
+const Rec = (() => {
+  let rec = null, on = false, curIdx = 0;
+
+  function toggle(idx){
+    curIdx = idx;
+    if(!rec && !_init()){ alert('Speech recognition not supported in this browser.'); return; }
+    if(on) stop();
+    else   start();
+  }
+
+  function _init(){
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if(!SR) return false;
+    rec = new SR();
+    rec.continuous     = true;
+    rec.interimResults = true;
+    rec.lang           = 'en-IN';
+    rec.onresult = e => {
+      let final='', interim='';
+      for(let i=e.resultIndex;i<e.results.length;i++){
+        if(e.results[i].isFinal) final += e.results[i][0].transcript;
+        else interim += e.results[i][0].transcript;
+      }
+      if(final){ S.descAnswers[curIdx] = (S.descAnswers[curIdx]||'') + final + ' '; }
+      const display = (S.descAnswers[curIdx]||'') + (interim ? '['+interim+']' : '');
+      const el = $('rec-transcript');
+      if(el) el.textContent = display || 'Listening…';
+      const btn = $('desc-submit');
+      if(btn) btn.disabled = (S.descAnswers[curIdx]||'').trim().length < 10;
+    };
+    rec.onerror = () => stop();
+    rec.onend   = () => { if(on) try{ rec.start(); }catch{} };
+    return true;
+  }
+
+  function start(){
+    on = true;
+    const btn = $('rec-btn'), st = $('rec-status');
+    if(btn){ btn.style.background='rgba(239,68,68,.25)'; btn.style.borderColor='rgba(239,68,68,.5)'; btn.textContent='⏹'; }
+    if(st) st.textContent = '🔴 Recording… click to stop';
+    try{ rec.start(); }catch{}
+  }
+
+  function stop(){
+    on = false;
+    if(rec) try{ rec.stop(); }catch{}
+    const btn = $('rec-btn'), st = $('rec-status');
+    if(btn){ btn.style.background=''; btn.style.borderColor=''; btn.textContent='🎤'; }
+    if(st) st.textContent = 'Recording stopped — review above, then submit';
+  }
+
+  return { toggle, stop };
+})();
+
+/* ── Evaluate both answers together, then show teacher video encouragement ── */
+async function runDescEval(){
+  TTS.stop();
+  setPhaseLabel('💬 Evaluating Answers…');
+  render(`
+    <div style="text-align:center;padding:60px;color:var(--muted)">
+      <div class="spin" style="margin:0 auto 16px;width:36px;height:36px;border-width:3px"></div>
+      <div>Lekha is reviewing your answers…</div>
+    </div>
+  `);
+
+  // Evaluate both questions in parallel
+  const evalResults = await Promise.all(DESC_QS.map(async (q, i) => {
+    const ans = (S.descAnswers[i]||'').trim();
+    if(!ans || ans.length < 5) return { question:q, student_answer:ans, feedback:'No answer provided.' };
+    try{
+      const res  = await fetch('/api/descriptive',{method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({ question:q, answer:ans })});
+      const data = await res.json();
+      return { question:q, student_answer:ans, feedback:data.feedback||'' };
+    }catch{
+      return { question:q, student_answer:ans, feedback:'' };
+    }
+  }));
+
+  S.descEvals = evalResults;
+  setXP(S.xp + 40);
+
+  // Show teacher encouragement screen
+  showDescTeacherReview(evalResults);
+}
+
+function showDescTeacherReview(evals){
+  TTS.stop();
+  setPhaseLabel('🎙️ Lekha\'s Feedback');
+
+  // Build a short encouraging spoken summary
+  const feedbackTexts = evals.map(e => e.feedback).filter(Boolean);
+  const encouragement = feedbackTexts.length
+    ? feedbackTexts.join(' ')
+    : 'Well done for completing the written section! Your answers show good effort and understanding. Keep up the great work!';
+
+  // Shorten to ~3 sentences for speaking
+  const spokenText = encouragement.split('.').slice(0,4).filter(Boolean).join('. ') + '.';
+
+  render(`
+    <div class="review-wrap">
+      <div class="review-top">
+        <div class="review-counter">📝 Written Round — Complete!</div>
+        <div style="font-size:.82rem;color:var(--text2);margin-top:6px">
+          Here's what Lekha thinks about your answers
+        </div>
+      </div>
+
+      <div class="rv-classroom">
+        <!-- CHALKBOARD: show scores/feedback highlights -->
+        <div class="rv-board-frame">
+          <div class="rv-btop">
+            <span class="rv-blabel">Your Performance</span>
+          </div>
+          <div class="rv-bsurface">
+            <div class="rv-blines" id="rv-blines"></div>
+          </div>
+          <div class="rv-btray">
+            <div class="chalk" style="width:14px;background:#f0ece0"></div>
+            <div class="chalk" style="width:12px;background:#a78bfa"></div>
+            <div class="chalk" style="width:13px;background:#4ade80"></div>
+          </div>
+        </div>
+
+        <!-- TEACHER VIDEO -->
+        <div class="rv-teacher">
+          <div class="rv-live"><div class="rv-live-dot"></div>LEKHA SPEAKING</div>
+          <video id="rv-vid" muted playsinline loop autoplay>
+            <source src="/static/teacher_video.mp4" type="video/mp4">
+          </video>
+          <div class="rv-sub-wrap">
+            <div class="rv-sub" id="rv-sub">Reading your answers…</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- FEEDBACK CARDS -->
+      <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:18px">
+        ${evals.map((e,i)=>`
+          <div style="background:rgba(167,139,250,.05);border:1px solid rgba(167,139,250,.18);
+            border-radius:12px;padding:14px 16px">
+            <div style="font-size:.7rem;font-weight:800;color:var(--violet);letter-spacing:.1em;
+              text-transform:uppercase;margin-bottom:6px">Q${i+1}: ${e.question.slice(0,60)}…</div>
+            <div style="font-size:.82rem;color:var(--text2);line-height:1.65">${e.feedback||'Evaluated.'}</div>
+          </div>`).join('')}
+      </div>
+
+      <div style="text-align:center">
+        <button class="btn-primary" id="to-report-btn" onclick="goToReport()" disabled
+          style="font-size:.95rem;padding:13px 32px">
+          See Full Report & Study Notes 📊
+        </button>
+        <div style="font-size:.75rem;color:var(--muted);margin-top:8px" id="rv-waiting">
+          ⏳ Listen to Lekha first…
+        </div>
+      </div>
+    </div>
+  `);
+
+  // Write board lines
+  const boardLines = [
+    { text: '✍️ Written Round Done!',        color:'#a78bfa' },
+    { text: '📝 Q1: Answered',               color:'#4ade80' },
+    { text: '📝 Q2: Answered',               color:'#4ade80' },
+    { text: '⭐ +40 XP Earned',              color:'#fbbf24' },
+    { text: '📊 Report ready soon…',          color:'#22d3ee' },
+  ];
+  const linesEl = $('rv-blines');
+  boardLines.forEach((b,i)=>{
+    const row = document.createElement('div');
+    row.className = 'rv-bl';
+    row.style.cssText = `color:${b.color};font-size:.95rem`;
+    row.innerHTML = `<span class="rv-bl-txt">${b.text}</span>`;
+    linesEl.appendChild(row);
+    setTimeout(()=>row.classList.add('vis'), i*250+300);
+  });
+
+  // Start video + speak
+  const vid = $('rv-vid');
+  if(vid){ vid.play().catch(()=>{}); }
+  const subEl = $('rv-sub');
+  setTimeout(()=>{
+    TTS.speakText(spokenText, ()=>{
+      if(vid) vid.pause();
+      const btn = $('to-report-btn');
+      const wait = $('rv-waiting');
+      if(btn){ btn.disabled=false; }
+      if(wait) wait.textContent = '✅ Ready to see your full report!';
+    }, subEl);
+  }, 700);
+}
+
+function goToReport(){ submitDescriptive(); }
+
+/* ════════════════════════════════════════════════
+   REPORT — generate then show analysis page
+   ════════════════════════════════════════════════ */
+async function submitDescriptive(){
+  TTS.stop();
+  setPhaseLabel('🎓 Generating Report…');
+  setProgress(97);
+  render(`
+    <div style="text-align:center;padding:60px;color:var(--muted)">
+      <div class="spin" style="margin:0 auto 16px;width:36px;height:36px;border-width:3px"></div>
+      <div>Building your full report and study notes…</div>
+    </div>
+  `);
+
+  const qSum = {};
+  for(const lvl of ['easy','medium','hard']){
+    const r = S.results[lvl]; if(!r.length) continue;
+    const c = r.filter(x=>x.correct).length;
+    qSum[lvl] = { total:r.length, correct:c, pct:Math.round(c/r.length*100) };
+  }
+  const weak = [];
+  for(const r of Object.values(S.results))
+    for(const x of r) if(!x.correct) weak.push(x.question.slice(0,80));
+
+  // Save quiz results, generate report + study notes in parallel
+  try{ await fetch('/api/save_quiz_results',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({results:S.results})}); }catch{}
+
+  let reportData = { final_report:'Great effort! You completed the full quiz.', quiz_summary:qSum };
+  let studyNotes = [];
+
+  try{
+    [reportData, studyNotes] = await Promise.all([
+      fetch('/api/generate_report',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({quiz_summary:qSum,weak_topics:weak,desc_evals:S.descEvals})}).then(r=>r.json()),
+      fetch('/api/study_notes').then(r=>r.json()),
+    ]);
+  }catch(e){ console.warn('Report/notes fetch error:', e); }
+
+  showReport(reportData, qSum, studyNotes);
+}
+
+function showReport(data, qSum, studyNotes=[]){
+  TTS.stop(); S.phase='report';
+  setPhaseLabel('🎓 Your Report'); setProgress(100); setXP(S.xp+50);
+
+  const qs  = data.quiz_summary || qSum || {};
+  const tc  = Object.values(qs).reduce((a,v)=>a+(v.correct||0),0);
+  const tq  = Object.values(qs).reduce((a,v)=>a+(v.total||0),0);
+  const op  = tq ? Math.round(tc/tq*100) : 0;
+  const pc  = op>=80?'var(--g2)':op>=50?'var(--gold)':'var(--red)';
+
+  const lvlsHTML = ['easy','medium','hard'].map(l=>{
+    if(!qs[l]) return '';
+    const p = qs[l].pct||0;
+    return `<div class="report-level">
+      <span class="rl-name">${l[0].toUpperCase()+l.slice(1)} Round</span>
+      <span class="rl-score ${scoreClass(p)}">${p}% (${qs[l].correct}/${qs[l].total})</span>
+    </div>`;
+  }).join('');
+
+  const topsHTML = (data.topics||[]).map(t=>`
+    <div style="padding:6px 0;font-size:.88rem;color:var(--text2);border-bottom:1px solid var(--br2)">✅ ${t}</div>
+  `).join('') || '<div style="color:var(--muted);font-size:.85rem">Topics data not available</div>';
+
+  const descHTML = S.descEvals.length ? S.descEvals.map((e,i)=>`
+    <div style="margin-bottom:12px;padding:14px;background:rgba(167,139,250,.04);
+      border:1px solid rgba(167,139,250,.12);border-radius:10px">
+      <div style="font-size:.78rem;font-weight:800;color:var(--violet);margin-bottom:5px">
+        Q${i+1}: ${e.question}</div>
+      <div style="font-size:.82rem;color:var(--text2);line-height:1.65">${e.feedback||'Evaluated'}</div>
+    </div>`).join('') : '';
+
+  // Study notes per topic
+  const notesHTML = studyNotes.length ? studyNotes.map(n=>`
+    <div class="study-note-card" id="sn-${n.topic_id}">
+      <div class="sn-title">📖 ${n.title}</div>
+      <div class="sn-body">${(n.notes||'').replace(/\n/g,'<br>')}</div>
+    </div>`).join('') :
+    '<div style="color:var(--muted);font-size:.85rem;padding:10px 0">Study notes not available — make sure processed_topics.json exists.</div>';
+
+  render(`
+    <div class="report-wrap" id="report-content">
+      <!-- HERO -->
+      <div class="report-hero">
+        <div style="font-size:3rem;margin-bottom:12px">🎓</div>
+        <h1>Learning Complete!</h1>
+        <p>Full analysis of your performance + study notes to revise</p>
+      </div>
+
+      <!-- STATS -->
+      <div class="stats-row">
+        <div class="stat-box">
+          <div class="stat-num" style="color:${pc}">${op}%</div>
+          <div class="stat-lbl">Overall Score</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-num">${tc}/${tq}</div>
+          <div class="stat-lbl">MCQs Correct</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-num" style="color:var(--gold)">${S.xp}</div>
+          <div class="stat-lbl">XP Earned</div>
+        </div>
+      </div>
+
+      <!-- QUIZ BREAKDOWN -->
+      <div class="report-section">
+        <h3>📊 Quiz Breakdown</h3>
+        ${lvlsHTML||'<div style="color:var(--muted);font-size:.85rem">No data</div>'}
+      </div>
+
+      <!-- TOPICS COVERED -->
+      <div class="report-section">
+        <h3>📚 Topics Covered</h3>
+        ${topsHTML}
+      </div>
+
+      <!-- LEKHA'S ASSESSMENT -->
+      <div class="report-section">
+        <h3>💬 Lekha's Assessment</h3>
+        <div class="report-body">${(data.final_report||'').replace(/\n/g,'<br>')}</div>
+      </div>
+
+      <!-- WRITTEN ANSWERS -->
+      ${descHTML ? `<div class="report-section"><h3>✍️ Written Answer Feedback</h3>${descHTML}</div>` : ''}
+
+      <!-- STUDY NOTES -->
+      <div class="report-section">
+        <h3>📒 Study Notes — Revise Anytime</h3>
+        <div style="font-size:.78rem;color:var(--muted);margin-bottom:14px">
+          Key points from each topic — save these for your revision!
+        </div>
+        <div id="study-notes-list">${notesHTML}</div>
+      </div>
+
+      <!-- DOWNLOAD + HOME -->
+      <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:28px;padding-bottom:20px">
+        <button onclick="downloadReport()" class="btn-primary"
+          style="display:flex;align-items:center;gap:7px;font-size:.9rem;padding:12px 28px">
+          ⬇️ Download Report
+        </button>
+        <a class="home-btn" href="/" style="margin-top:0">← Back to Classroom</a>
+      </div>
+    </div>
+  `);
+
+  // Store for download
+  window._reportPayload = { data, qSum:qs, studyNotes, descEvals:S.descEvals, xp:S.xp, op, tc, tq };
+
+  TTS.speakText(
+    (data.final_report||'Congratulations! You completed the quiz.')
+      .split('.').slice(0,2).join('.')+'. Great job!',
+    null, null);
+}
+
+/* ════════════════════════════════════════════════
+   DOWNLOAD REPORT — generates a styled HTML file
+   and triggers browser download
+   ════════════════════════════════════════════════ */
+function downloadReport(){
+  const p = window._reportPayload || {};
+  const { data={}, qSum={}, studyNotes=[], descEvals=[], xp=0, op=0, tc=0, tq=0 } = p;
+  const date = new Date().toLocaleDateString('en-IN',{day:'numeric',month:'long',year:'numeric'});
+
+  const lvls = ['easy','medium','hard'].map(l=>{
+    if(!qSum[l]) return '';
+    const pct = qSum[l].pct||0;
+    const col = pct>=80?'#4ade80':pct>=50?'#fbbf24':'#f87171';
+    return `<tr><td style="padding:8px 12px;text-transform:capitalize">${l}</td>
+      <td style="padding:8px 12px">${qSum[l].correct}/${qSum[l].total}</td>
+      <td style="padding:8px 12px;color:${col};font-weight:700">${pct}%</td></tr>`;
+  }).join('');
+
+  const notesSection = studyNotes.map(n=>`
+    <div style="margin-bottom:18px;padding:16px;background:#f8fdf9;border:1px solid #c6e8d0;border-radius:10px">
+      <h3 style="color:#1a5c2e;margin:0 0 8px;font-size:1rem">📖 ${n.title}</h3>
+      <div style="font-size:.9rem;color:#2d4a38;line-height:1.7;white-space:pre-wrap">${n.notes||''}</div>
+    </div>`).join('');
+
+  const descSection = descEvals.map((e,i)=>`
+    <div style="margin-bottom:14px;padding:14px;background:#faf8ff;border:1px solid #d4c5f9;border-radius:9px">
+      <div style="font-size:.82rem;font-weight:700;color:#6d28d9;margin-bottom:5px">Q${i+1}: ${e.question}</div>
+      <div style="font-size:.88rem;color:#4a3b6b;line-height:1.65"><strong>Your answer:</strong> ${e.student_answer||''}</div>
+      <div style="font-size:.88rem;color:#4a3b6b;line-height:1.65;margin-top:5px"><strong>Feedback:</strong> ${e.feedback||''}</div>
+    </div>`).join('');
+
+  const topicsStr = (data.topics||[]).map(t=>`<li>${t}</li>`).join('');
+
+  const html = `<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8">
+<title>EduAI Learning Report — ${date}</title>
+<style>
+  body{font-family:"Segoe UI",Arial,sans-serif;margin:0;padding:0;background:#fff;color:#1a2e22}
+  .cover{background:linear-gradient(135deg,#0d3a1e,#14532d);color:#fff;padding:48px 40px;text-align:center}
+  .cover h1{font-size:2rem;margin:0 0 8px}
+  .cover p{opacity:.8;margin:4px 0;font-size:.95rem}
+  .badge{display:inline-block;padding:4px 14px;border-radius:20px;font-size:.8rem;font-weight:700;margin:4px}
+  .section{padding:24px 40px;border-bottom:1px solid #e8f4ed}
+  .section h2{color:#14532d;font-size:1.1rem;margin:0 0 14px;padding-bottom:6px;border-bottom:2px solid #c6e8d0}
+  table{width:100%;border-collapse:collapse;font-size:.9rem}
+  th{background:#e8f4ed;color:#1a5c2e;padding:8px 12px;text-align:left;font-weight:700}
+  td{border-bottom:1px solid #f0f9f4}
+  .stat-row{display:flex;gap:16px;flex-wrap:wrap;margin-bottom:14px}
+  .stat{background:#f0f9f4;border:1px solid #c6e8d0;border-radius:10px;padding:14px 20px;text-align:center;flex:1;min-width:100px}
+  .stat-n{font-size:1.6rem;font-weight:800;color:#14532d}
+  .stat-l{font-size:.72rem;color:#5a8a6a;text-transform:uppercase;letter-spacing:.08em}
+  .footer{text-align:center;padding:24px;font-size:.78rem;color:#7a9a82}
+</style>
+</head>
+<body>
+<div class="cover">
+  <div style="font-size:2.5rem;margin-bottom:10px">🎓</div>
+  <h1>EduAI Learning Report</h1>
+  <p>${date}</p>
+  <div style="margin-top:16px">
+    <span class="badge" style="background:rgba(74,222,128,.2);border:1px solid rgba(74,222,128,.4)">⭐ ${xp} XP</span>
+    <span class="badge" style="background:rgba(251,191,36,.2);border:1px solid rgba(251,191,36,.4)">📊 ${op}% Overall</span>
+  </div>
+</div>
+
+<div class="section">
+  <h2>📊 Performance Summary</h2>
+  <div class="stat-row">
+    <div class="stat"><div class="stat-n" style="color:${op>=80?'#16a34a':op>=50?'#d97706':'#dc2626'}">${op}%</div><div class="stat-l">Overall Score</div></div>
+    <div class="stat"><div class="stat-n">${tc}/${tq}</div><div class="stat-l">MCQs Correct</div></div>
+    <div class="stat"><div class="stat-n" style="color:#d97706">${xp}</div><div class="stat-l">XP Earned</div></div>
+  </div>
+  <table><thead><tr><th>Level</th><th>Score</th><th>Percentage</th></tr></thead><tbody>${lvls}</tbody></table>
+</div>
+
+<div class="section">
+  <h2>📚 Topics Covered</h2>
+  <ul style="padding-left:20px;line-height:1.9;font-size:.9rem">${topicsStr}</ul>
+</div>
+
+<div class="section">
+  <h2>💬 Lekha's Assessment</h2>
+  <p style="font-size:.92rem;line-height:1.8;color:#2d4a38;white-space:pre-wrap">${data.final_report||''}</p>
+</div>
+
+${descSection ? `<div class="section"><h2>✍️ Written Answers & Feedback</h2>${descSection}</div>` : ''}
+
+<div class="section">
+  <h2>📒 Study Notes — Revise Anytime</h2>
+  ${notesSection||'<p style="color:#888">No study notes available.</p>'}
+</div>
+
+<div class="footer">
+  Generated by EduAI • ${date} • Keep learning — you're doing great! 🌟
+</div>
+</body></html>`;
+
+  const blob = new Blob([html], {type:'text/html'});
+  const a    = document.createElement('a');
+  a.href     = URL.createObjectURL(blob);
+  a.download = `EduAI_Report_${date.replace(/ /g,'_')}.html`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+  toast('📥 Report downloaded!');
+}
+
+/* ════════════════════════════════════════════════
+   BOOT
+   ════════════════════════════════════════════════ */
+document.addEventListener('DOMContentLoaded',()=>{TTS.init();init();});
+</script>
 </body>
 </html>

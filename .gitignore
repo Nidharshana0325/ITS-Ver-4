@@ -1,16 +1,21 @@
-# Python cache
+# Ignore virtual environment
+venv/
+
+# Ignore Python cache
 __pycache__/
 *.pyc
 
-# Large model files
-models/*.gguf
+# Ignore models (large files)
+models/
 
-# Generated / runtime data
-data/input_audio.wav
+# Ignore generated data files
+data/*.wav
 data/*.json
+data/rag_store/
 
-# OS files
+# Optional: keep structure but ignore contents
+!data/.gitkeep
+
+# OS / editor junk
 .DS_Store
-
-# Virtual environments
-venv/
+.vscode/
