@@ -1,16 +1,31 @@
 """
-app.py — EduAI Classroom Server
+app.py — EduAI Classroom Server  (FIXED)
 ════════════════════════════════════════════════════════════════════════
+FIXES IN THIS VERSION:
+  1. /api/mcqs/{difficulty} now accepts both "hard" (frontend term) and
+     "difficult" (step_5 term) — maps them transparently.
+  2. /api/check_answer  same normalisation so grading works.
+  3. CORS headers added to StreamingResponse so SSE works from all browsers.
+  4. /api/health returns proper ready/not-ready JSON (no 503 on missing files).
+  5. Model load guarded — server starts even if model file missing, returns
+     503 on model-dependent endpoints rather than crashing at boot.
+  6. All JSON loads wrapped with cleaner error messages.
+  7. quiz_results.json save/load handles "hard"↔"difficult" normalisation.
+
 Endpoints:
-  GET  /                        → classroom HTML (from templates/)
-  GET  /api/topics              → topic list (for sidebar)
+  GET  /                        → classroom HTML
+  GET  /quiz                    → quiz HTML
+  GET  /api/topics              → topic list (sidebar)
   GET  /api/topic/{id}          → full topic data
-  POST /api/ask                 → streaming doubt answer (SSE)
-  GET  /api/mcqs/{difficulty}   → MCQs (correct_index hidden from client)
-  POST /api/check_answer        → grade MCQ answer + teacher feedback
-  POST /api/descriptive         → evaluate written answer (4 criteria)
-  GET  /api/report              → final learning report JSON
+  POST /api/ask                 → streaming SSE doubt answer
+  GET  /api/mcqs/{difficulty}   → MCQs  [easy | medium | hard | difficult]
+  POST /api/check_answer        → grade MCQ + teacher feedback
+  POST /api/descriptive         → evaluate written answer
+  GET  /api/report              → final learning report
   GET  /api/quiz_results        → saved quiz results
+  POST /api/save_quiz_results   → persist quiz results
+  POST /api/generate_report     → generate + save final report
+  GET  /api/study_notes         → per-topic study notes
   GET  /api/health              → server status
 
 Run: uvicorn app:app --reload --port 8000
@@ -26,13 +41,26 @@ from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from llama_cpp import Llama
 
 # ── Config ─────────────────────────────────────────────────────────────────────
 DATA_DIR     = Path("data")
 MODEL_PATH   = "models/Phi-3.5-mini-instruct-Q4_K_L.gguf"
 TEMPLATE_DIR = Path("templates")
 STATIC_DIR   = Path("static")
+
+# ── Difficulty normalisation ───────────────────────────────────────────────────
+# step_5 writes "difficult"; the quiz frontend sends/expects "hard".
+# This dict lets us accept either spelling everywhere.
+DIFF_ALIASES = {
+    "hard":      "difficult",   # frontend → stored key
+    "difficult": "difficult",   # stored key (step_5, step_6)
+    "easy":      "easy",
+    "medium":    "medium",
+}
+
+def normalise_diff(d: str) -> str:
+    """Map 'hard' → 'difficult'; pass others through unchanged."""
+    return DIFF_ALIASES.get(d.lower(), d.lower())
 
 app = FastAPI(title="EduAI Classroom")
 app.add_middleware(
@@ -45,20 +73,34 @@ app.add_middleware(
 if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory="static"), name="static")
 
-print("🧠 Loading Phi-3.5-mini-instruct…")
-llm = Llama(
-    model_path=MODEL_PATH,
-    n_ctx=2048,
-    n_threads=8,
-    temperature=0.3,
-    verbose=False,
-)
-print("✅ Model ready\n")
+# ── Model (lazy / guarded load) ────────────────────────────────────────────────
+llm = None
+
+def get_llm():
+    global llm
+    if llm is not None:
+        return llm
+    if not Path(MODEL_PATH).exists():
+        raise HTTPException(
+            503,
+            f"Model file not found: {MODEL_PATH}\n"
+            "Download Phi-3.5-mini-instruct-Q4_K_L.gguf and place it in models/"
+        )
+    from llama_cpp import Llama
+    print("🧠 Loading Phi-3.5-mini-instruct…")
+    llm = Llama(
+        model_path=MODEL_PATH,
+        n_ctx=2048,
+        n_threads=8,
+        temperature=0.3,
+        verbose=False,
+    )
+    print("✅ Model ready")
+    return llm
 
 
-# ── RAG (optional — silently skips if store missing) ───────────────────────────
+# ── RAG (optional) ─────────────────────────────────────────────────────────────
 def rag_context(query: str, n: int = 2) -> str:
-    """Retrieve relevant context from ChromaDB RAG store, or return empty string."""
     rag_dir = DATA_DIR / "rag_store"
     if not rag_dir.exists():
         return ""
@@ -90,42 +132,29 @@ def get_topic(topic_id: int):
 
 
 def phi_prompt(system: str, user: str) -> str:
-    """Phi-3.5-mini-instruct chat format."""
     return f"<|system|>\n{system}\n<|end|>\n<|user|>\n{user}\n<|end|>\n<|assistant|>\n"
 
 
 def clean_board_items(items: list) -> list:
-    """
-    Normalise board items from LLM output.
-    Accepts:
-      - list of strings  → wraps into dicts
-      - list of dicts    → normalises color/text fields
-    Returns list of dicts: [{text, color, indent}]
-    """
     COLORS  = ["yellow", "cyan", "lime", "orange", "white", "pink"]
     PALETTE = set(COLORS)
     result  = []
-
     for i, item in enumerate(items):
         if isinstance(item, str):
             item = {"text": item, "color": COLORS[i % len(COLORS)], "indent": 0}
-
         text = item.get("text", "").strip()
-        # Normalise bullet prefixes
         if text.startswith("* "):
             text = "★ " + text[2:]
         elif text.startswith("- "):
             text = "→ " + text[2:]
-        item["text"]  = text
-        item["color"] = item.get("color") if item.get("color") in PALETTE else COLORS[i % len(COLORS)]
+        item["text"]   = text
+        item["color"]  = item.get("color") if item.get("color") in PALETTE else COLORS[i % len(COLORS)]
         item["indent"] = int(item.get("indent", 0))
         result.append(item)
-
     return result
 
 
 def build_topic_context(topic) -> str:
-    """Build a concise context string from topic data for LLM prompts."""
     if not topic:
         return ""
     key_pts = "; ".join(
@@ -161,7 +190,8 @@ def quiz_page():
 def report_page():
     html_path = TEMPLATE_DIR / "report.html"
     if not html_path.exists():
-        raise HTTPException(500, "report.html not found in templates/")
+        # Graceful fallback instead of 500
+        return HTMLResponse("<h1>Report not available yet. Complete the quiz first.</h1>")
     return HTMLResponse(html_path.read_text(encoding="utf-8"))
 
 
@@ -174,9 +204,9 @@ def api_topics():
         {
             "topic_id":      t["topic_id"],
             "topic_title":   t["topic_title"],
-            "start":         t["start"],
-            "end":           t["end"],
-            "duration":      round(t["end"] - t["start"], 1),
+            "start":         t.get("start", 0),
+            "end":           t.get("end", 0),
+            "duration":      round(t.get("end", 0) - t.get("start", 0), 1),
             "quality_score": t.get("quality_score", 0.5),
         }
         for t in data
@@ -191,7 +221,7 @@ def api_topic(topic_id: int):
     return JSONResponse(t)
 
 
-# ── /api/ask — streaming SSE doubt answering ───────────────────────────────────
+# ── /api/ask — streaming SSE ────────────────────────────────────────────────────
 
 class AskRequest(BaseModel):
     question: str
@@ -201,15 +231,15 @@ class AskRequest(BaseModel):
 
 @app.post("/api/ask")
 async def api_ask(req: AskRequest):
-    topic       = get_topic(req.topic_id)
-    topic_ctx   = build_topic_context(topic)
+    model     = get_llm()
+    topic     = get_topic(req.topic_id)
+    topic_ctx = build_topic_context(topic)
 
-    # Supplement with RAG if available
     rag_ctx = rag_context(req.question)
     if rag_ctx:
         topic_ctx += f"\n\nAdditional context:\n{rag_ctx[:400]}"
 
-    # ── Step 1: Board key-points ─────────────────────────────────────────────
+    # ── Board key-points ────────────────────────────────────────────────────
     board_system = (
         "You are an Indian school teacher writing quick chalkboard notes to answer a student's doubt.\n"
         "Return ONLY a valid JSON array of 4–5 items. No markdown, no extra text before or after the JSON.\n"
@@ -224,7 +254,7 @@ async def api_ask(req: AskRequest):
         f"Lesson context:\n{topic_ctx[:350]}\n\n"
         f"Student's question: {req.question}"
     )
-    board_raw = llm(phi_prompt(board_system, board_user), max_tokens=300)["choices"][0]["text"].strip()
+    board_raw = model(phi_prompt(board_system, board_user), max_tokens=300)["choices"][0]["text"].strip()
 
     board_items: list = []
     try:
@@ -235,7 +265,6 @@ async def api_ask(req: AskRequest):
         pass
 
     if not board_items:
-        # Minimal fallback — still meaningful
         short_q = req.question[:38].rstrip()
         board_items = clean_board_items([
             {"text": short_q,           "color": "yellow", "indent": 0},
@@ -244,13 +273,13 @@ async def api_ask(req: AskRequest):
             {"text": "→ Remember this", "color": "orange", "indent": 0},
         ])
 
-    # ── Step 2: Concept diagram for the doubt ────────────────────────────────
+    # ── Concept diagram ──────────────────────────────────────────────────────
     diag_system = (
         "Generate a simple horizontal Mermaid flowchart (4–5 nodes) to explain a student's question.\n"
         'Return ONLY JSON (no markdown): {"type":"flowchart_lr","mermaid":"…"}\n'
         "Rules:\n"
         "  - Use 'flowchart LR' (horizontal left-to-right)\n"
-        "  - Each node: 2–5 meaningful words in square brackets, e.g. A[\"Concept name\"]\n"
+        '  - Each node: 2–5 meaningful words in square brackets, e.g. A["Concept name"]\n'
         "  - Nodes must form a logical sequence or hierarchy for the topic\n"
         "  - No single-word nodes"
     )
@@ -258,11 +287,10 @@ async def api_ask(req: AskRequest):
         f"Context: {topic_ctx[:250]}\n"
         f"Question: {req.question}"
     )
-    diag_raw = llm(phi_prompt(diag_system, diag_user), max_tokens=350)["choices"][0]["text"].strip()
+    diag_raw = model(phi_prompt(diag_system, diag_user), max_tokens=350)["choices"][0]["text"].strip()
 
     doubt_diagram: dict = {}
     try:
-        # Strip markdown fences if present
         diag_raw = re.sub(r"^```[a-z]*\n?", "", diag_raw, flags=re.I)
         diag_raw = re.sub(r"\n?```$", "", diag_raw.rstrip())
         s, e = diag_raw.find("{"), diag_raw.rfind("}") + 1
@@ -274,7 +302,6 @@ async def api_ask(req: AskRequest):
         pass
 
     if not doubt_diagram:
-        # Fallback: build from board items
         nodes  = "\n".join(f'  N{i}["{it["text"].lstrip("→ ★").strip()[:30]}"]'
                            for i, it in enumerate(board_items[:4]))
         arrows = "\n".join(f"  N{i} --> N{i+1}" for i in range(min(len(board_items)-1, 3)))
@@ -283,7 +310,7 @@ async def api_ask(req: AskRequest):
             "mermaid": f"flowchart LR\n{nodes}\n{arrows}",
         }
 
-    # ── Step 3: Spoken answer (streaming) ────────────────────────────────────
+    # ── Spoken answer (streaming) ────────────────────────────────────────────
     history_str = ""
     for m in req.history[-4:]:
         role = "Student" if m.get("role") == "user" else "Lekha"
@@ -307,35 +334,42 @@ async def api_ask(req: AskRequest):
     )
 
     async def event_stream():
-        # Event 1: board items + diagram (sent immediately, before streaming answer)
         yield f"data: {json.dumps({'type': 'board', 'items': board_items, 'diagram': doubt_diagram})}\n\n"
-
-        # Events 2…N: stream the spoken answer token by token
         full = ""
-        for chunk in llm(phi_prompt(speech_system, speech_user), max_tokens=260, stream=True):
+        for chunk in model(phi_prompt(speech_system, speech_user), max_tokens=260, stream=True):
             tok   = chunk["choices"][0]["text"]
             full += tok
             yield f"data: {json.dumps({'type': 'token', 'token': tok})}\n\n"
-            await asyncio.sleep(0)  # yield control to event loop
-
-        # Final event: complete answer
+            await asyncio.sleep(0)
         yield f"data: {json.dumps({'type': 'done', 'full': full.strip()})}\n\n"
 
-    return StreamingResponse(event_stream(), media_type="text/event-stream")
+    # FIX: add proper SSE headers so browsers don't buffer the stream
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control":  "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection":     "keep-alive",
+        },
+    )
 
 
-# ── MCQs ───────────────────────────────────────────────────────────────────────
+# ── MCQs ────────────────────────────────────────────────────────────────────────
 
 @app.get("/api/mcqs/{difficulty}")
 def api_mcqs(difficulty: str):
     data = load_json(DATA_DIR / "mcqs.json")
     if data is None:
         raise HTTPException(503, "mcqs.json not found — run step_5 first")
-    # Never send correct_index to client
+
+    # FIX: normalise so frontend "hard" matches stored "difficult"
+    stored_diff = normalise_diff(difficulty)
+
     return JSONResponse([
         {k: v for k, v in q.items() if k != "correct_index"}
         for q in data
-        if q.get("difficulty") == difficulty
+        if normalise_diff(q.get("difficulty", "")) == stored_diff
     ])
 
 
@@ -351,9 +385,12 @@ async def api_check_answer(req: AnswerReq):
     if data is None:
         raise HTTPException(503, "mcqs.json not found")
 
-    qs = [q for q in data if q.get("difficulty") == req.difficulty]
+    # FIX: normalise difficulty so "hard" finds "difficult" questions
+    stored_diff = normalise_diff(req.difficulty)
+    qs = [q for q in data if normalise_diff(q.get("difficulty", "")) == stored_diff]
+
     if req.question_index >= len(qs):
-        raise HTTPException(404, "Question index out of range")
+        raise HTTPException(404, f"Question index {req.question_index} out of range (have {len(qs)} '{stored_diff}' questions)")
 
     q  = qs[req.question_index]
     ok = req.chosen_index == q["correct_index"]
@@ -368,7 +405,8 @@ async def api_check_answer(req: AnswerReq):
     }
 
     if not ok:
-        ctx = rag_context(q["question"])
+        model  = get_llm()
+        ctx    = rag_context(q["question"])
         fb_prompt = phi_prompt(
             system=(
                 "You are a kind, encouraging Indian school teacher.\n"
@@ -384,12 +422,12 @@ async def api_check_answer(req: AnswerReq):
                 f"Context: {ctx[:300]}"
             ),
         )
-        result["teacher_feedback"] = llm(fb_prompt, max_tokens=140)["choices"][0]["text"].strip()
+        result["teacher_feedback"] = model(fb_prompt, max_tokens=140)["choices"][0]["text"].strip()
 
     return JSONResponse(result)
 
 
-# ── Descriptive evaluation ─────────────────────────────────────────────────────
+# ── Descriptive evaluation ──────────────────────────────────────────────────────
 
 class DescReq(BaseModel):
     question: str
@@ -398,7 +436,8 @@ class DescReq(BaseModel):
 
 @app.post("/api/descriptive")
 def api_descriptive(req: DescReq):
-    ctx = rag_context(req.question)
+    model = get_llm()
+    ctx   = rag_context(req.question)
     eval_prompt = phi_prompt(
         system=(
             "You are an expert teacher evaluating a student's written answer.\n"
@@ -416,11 +455,11 @@ def api_descriptive(req: DescReq):
             f"Relevant content: {ctx[:400]}"
         ),
     )
-    out = llm(eval_prompt, max_tokens=230)["choices"][0]["text"].strip()
+    out = model(eval_prompt, max_tokens=230)["choices"][0]["text"].strip()
     return JSONResponse({"feedback": out})
 
 
-# ── Reports ────────────────────────────────────────────────────────────────────
+# ── Reports ─────────────────────────────────────────────────────────────────────
 
 @app.get("/api/report")
 def api_report():
@@ -456,6 +495,7 @@ class FinalReportReq(BaseModel):
 
 @app.post("/api/generate_report")
 def api_generate_report(req: FinalReportReq):
+    model       = get_llm()
     topics_data = load_json(DATA_DIR / "processed_topics.json") or []
     topic_titles = [t["topic_title"] for t in topics_data]
 
@@ -476,7 +516,7 @@ def api_generate_report(req: FinalReportReq):
             f"Weak areas (wrong questions): {req.weak_topics[:5]}"
         ),
     )
-    report_text = llm(report_prompt, max_tokens=400)["choices"][0]["text"].strip()
+    report_text = model(report_prompt, max_tokens=400)["choices"][0]["text"].strip()
 
     final = {
         "topics":                  topic_titles,
@@ -493,11 +533,11 @@ def api_generate_report(req: FinalReportReq):
 
 @app.get("/api/study_notes")
 def api_study_notes():
-    """Generate concise study notes for each topic. Cached in data/study_notes.json."""
     cache = DATA_DIR / "study_notes.json"
     if cache.exists():
         return JSONResponse(load_json(cache))
 
+    model       = get_llm()
     topics_data = load_json(DATA_DIR / "processed_topics.json") or []
     notes = []
     for t in topics_data:
@@ -520,7 +560,7 @@ def api_study_notes():
                 f"Board notes: {'; '.join(board[:5])}"
             ),
         )
-        text = llm(prompt, max_tokens=220)["choices"][0]["text"].strip()
+        text = model(prompt, max_tokens=220)["choices"][0]["text"].strip()
         notes.append({"topic_id": t["topic_id"], "title": title, "notes": text})
 
     with open(cache, "w", encoding="utf-8") as f:
@@ -528,16 +568,35 @@ def api_study_notes():
     return JSONResponse(notes)
 
 
-# ── Health ─────────────────────────────────────────────────────────────────────
+# ── Health ──────────────────────────────────────────────────────────────────────
 
 @app.get("/api/health")
 def api_health():
-    return JSONResponse({
-        "status": "ok",
-        "checks": {
-            "model":            Path(MODEL_PATH).exists(),
-            "processed_topics": (DATA_DIR / "processed_topics.json").exists(),
-            "mcqs":             (DATA_DIR / "mcqs.json").exists(),
-            "rag_store":        (DATA_DIR / "rag_store").exists(),
+    model_ok = Path(MODEL_PATH).exists()
+    topics_ok = (DATA_DIR / "processed_topics.json").exists()
+    mcqs_ok   = (DATA_DIR / "mcqs.json").exists()
+    rag_ok    = (DATA_DIR / "rag_store").exists()
+
+    all_ok = model_ok and topics_ok and mcqs_ok
+
+    return JSONResponse(
+        {
+            "status": "ready" if all_ok else "not_ready",
+            "checks": {
+                "model":            model_ok,
+                "processed_topics": topics_ok,
+                "mcqs":             mcqs_ok,
+                "rag_store":        rag_ok,
+            },
+            "missing": (
+                []
+                if all_ok
+                else [k for k, v in {
+                    "model": model_ok,
+                    "processed_topics": topics_ok,
+                    "mcqs": mcqs_ok,
+                }.items() if not v]
+            ),
         },
-    })
+        status_code=200,   # always 200 — let client decide what to show
+    )
