@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%2322c55e'/><text y='22' x='6' font-size='18'>📚</text></svg>">
 <title>EduAI — Smart Classroom</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Caveat:wght@400;600;700&family=DM+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
@@ -138,13 +139,15 @@ body{background:radial-gradient(ellipse 200% 100% at 50% -8%,#0d2216,var(--bg0) 
 
 /* ═══ TEACHER VIDEO ══════════════════════════════════════════════════════════ */
 #teacher-panel{grid-column:2;grid-row:1}
-#teacher-body{flex:1;position:relative;overflow:hidden;background:#000}
-#tvid{width:100%;height:100%;object-fit:cover;object-position:center top}
+#teacher-body{flex:1;position:relative;overflow:hidden;background:linear-gradient(160deg,#0a1a14,#07090a)}
+#tvid{display:none}
+#avatar-container{position:absolute;inset:0;width:100%;height:100%;display:flex;align-items:flex-end;justify-content:center;overflow:hidden;z-index:0}
+#avatar-svg-wrap{width:100%;height:100%;display:flex;align-items:flex-end;justify-content:center}
+#avatar-svg-wrap svg{width:auto;height:108%;max-width:115%;object-fit:contain;display:block;filter:drop-shadow(0 8px 32px rgba(0,0,0,.7))}
 #teacher-body::after{content:"";position:absolute;inset:0;pointer-events:none;z-index:1;
   background:
-    linear-gradient(to top,rgba(7,9,10,.9) 0%,rgba(7,9,10,.08) 28%,transparent 50%),
-    linear-gradient(to right,rgba(7,9,10,.18) 0%,transparent 18%),
-    linear-gradient(to left,rgba(7,9,10,.18) 0%,transparent 18%)}
+    linear-gradient(to top,rgba(7,9,10,.88) 0%,rgba(7,9,10,.06) 30%,transparent 55%),
+    radial-gradient(ellipse 110% 60% at 50% 110%,rgba(7,9,10,.55) 0%,transparent 70%)}
 #teacher-top{position:absolute;top:0;left:0;right:0;z-index:5;padding:9px 14px;
   background:linear-gradient(to bottom,rgba(5,7,8,.55),transparent);
   display:flex;justify-content:space-between;align-items:center}
@@ -187,9 +190,9 @@ body{background:radial-gradient(ellipse 200% 100% at 50% -8%,#0d2216,var(--bg0) 
 #subtitles{position:absolute;bottom:12px;left:0;right:0;z-index:5;
   padding:6px 14px;text-align:center;pointer-events:none}
 #sub-box{background:rgba(0,0,0,.78);backdrop-filter:blur(10px);
-  border-left:3px solid var(--g2);border-radius:10px;padding:8px 16px;
-  display:inline-block;max-width:94%;margin:0 auto;box-shadow:0 3px 12px rgba(0,0,0,.5)}
-#sub-txt{font-size:.94rem;font-weight:500;line-height:1.45;color:#fff;
+  border-left:3px solid var(--g2);border-radius:9px;padding:6px 12px;
+  display:inline-block;max-width:88%;margin:0 auto;box-shadow:0 3px 12px rgba(0,0,0,.5)}
+#sub-txt{font-size:.86rem;font-weight:500;line-height:1.35;color:#fff;
   text-shadow:0 1px 3px rgba(0,0,0,.8);min-height:1.35em}
 .sub-in{animation:subIn .3s ease}
 @keyframes subIn{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
@@ -393,9 +396,11 @@ body{background:radial-gradient(ellipse 200% 100% at 50% -8%,#0d2216,var(--bg0) 
         </div>
       </div>
       <div id="teacher-body">
-        <video id="tvid" muted playsinline loop>
-          <source src="/static/teacher_video.mp4" type="video/mp4">
-        </video>
+        <!-- Hidden stub video kept for JS compatibility -->
+        <video id="tvid" style="display:none" muted playsinline></video>
+        <div id="avatar-container">
+          <div id="avatar-svg-wrap" aria-label="Teacher Lekha avatar"></div>
+        </div>
         <div id="pause-ov" onclick="Lesson.toggle()">
           <div id="pause-icon">▶</div>
         </div>
@@ -584,7 +589,8 @@ const TTS = (() => {
   }
 
   /* speak a flat list of sentences, call onAllDone when finished */
-  function speakList(sentences, onAllDone, showSubtitles = true) {
+  /* onProgress(i) called after each sentence with its 0-based index */
+  function speakList(sentences, onAllDone, showSubtitles = true, onProgress = null) {
     stop();
     if (!window.speechSynthesis || !sentences.length) {
       if (onAllDone) onAllDone();
@@ -607,8 +613,14 @@ const TTS = (() => {
       u.pitch  = 1.0;
       u.volume = 1.0;
       if (voice) u.voice = voice;
+      if (window.TeacherAvatar && TeacherAvatar.setSpeechText)
+        TeacherAvatar.setSpeechText(text, u.rate);
 
-      u.onend   = () => { idx++; next(); };
+      u.onend   = () => {
+        if (onProgress) onProgress(idx);
+        idx++;
+        next();
+      };
       u.onerror = e  => {
         if (e.error === 'interrupted' || e.error === 'canceled') return;
         console.warn('TTS error:', e.error, '- skipping sentence');
@@ -665,10 +677,11 @@ const Lesson = (() => {
     paused = false;
     _setPlayUI(true);
     _vidPlay();
-    // Speak from sentIdx
+    // Speak from sentIdx — onProgress callback updates sentIdx so pause/resume works
     TTS.speakList(sentences.slice(sentIdx), () => {
-      // all sentences done
       if (!paused) _onLessonDone();
+    }, true, (i) => {
+      sentIdx = sentIdx + i; // track absolute position for pause/resume
     });
   }
 
@@ -705,14 +718,14 @@ const Lesson = (() => {
 
   function seek(secs) {
     const v = $('tvid');
-    if (isFinite(v.duration))
+    if (v && isFinite(v.duration))
       v.currentTime = Math.max(0, Math.min(v.duration, v.currentTime + secs));
     toast((secs > 0 ? '⏩' : '⏪') + ' ' + Math.abs(secs) + 's');
   }
 
   function setSpeed(val) {
     State.speed = parseFloat(val);
-    $('tvid').playbackRate = State.speed;
+    const _v=$('tvid'); if(_v&&_v.src) _v.playbackRate=State.speed;
     // If currently playing: stop TTS and restart from current sentIdx at new speed
     if (State.isPlaying) {
       TTS.stop();
@@ -737,8 +750,8 @@ const Lesson = (() => {
   }
 
   /* video helpers */
-  function _vidPlay()  { const v=$('tvid'); v.playbackRate=State.speed; v.play().catch(()=>{}); }
-  function _vidPause() { $('tvid').pause(); }
+  function _vidPlay()  { const v=$('tvid'); if(v&&v.src) { v.playbackRate=State.speed; v.play().catch(()=>{}); } }
+  function _vidPause() { const v=$('tvid'); if(v&&v.src) v.pause(); }
   /* called by Chat when speaking doubt answer (video plays without TTS lesson) */
   function vidPlay()   { _vidPlay(); }
   function vidPause()  { _vidPause(); }
@@ -771,22 +784,36 @@ const Board = (() => {
     clear(false);
     const pts = items.slice(0, 6);
     const el  = $('board-lines');
-    // font size based on item count so everything fits
     const fs = pts.length <= 3 ? '1.25rem'
              : pts.length <= 4 ? '1.1rem'
              : pts.length <= 5 ? '1rem'
              : '.88rem';
 
-    pts.forEach((text, i) => {
+    // Color name → CSS var mapping (matches step_3 palette)
+    const COLOR_MAP = {
+      yellow:'#fbbf24', cyan:'#22d3ee', lime:'#86efac',
+      orange:'#fb923c', white:'#e8f4ed', pink:'#f9a8d4',
+    };
+
+    pts.forEach((item, i) => {
+      // item can be a plain string OR {text, color, indent} from step_3
+      const isObj  = item && typeof item === 'object';
+      const text   = isObj ? (item.text || '') : String(item);
+      const indent = isObj ? (item.indent || 0) : 0;
+      const namedColor = isObj ? item.color : null;
+      const color  = (namedColor && COLOR_MAP[namedColor]) || COLORS[i % COLORS.length];
+
       const row = document.createElement('div');
       row.className = 'bl';
-      row.style.color      = COLORS[i % COLORS.length];
+      row.style.color      = color;
       row.style.fontWeight = i === 0 ? '700' : '500';
       row.style.fontSize   = fs;
+      if (indent) row.style.paddingLeft = (indent * 16) + 'px';
 
       const bul = document.createElement('span');
       bul.className = 'bl-bullet';
-      bul.textContent = i === 0 ? '★' : '→';
+      // If text already has a bullet prefix, skip the auto-bullet
+      bul.textContent = /^[★→•]/.test(text.trim()) ? '' : (i === 0 ? '★' : '→');
 
       const txt = document.createElement('span');
       txt.className = 'bl-txt';
@@ -796,7 +823,6 @@ const Board = (() => {
       row.appendChild(txt);
       el.appendChild(row);
 
-      // staggered reveal (purely cosmetic, all content IS in DOM immediately)
       setTimeout(() => row.classList.add('visible'),
         i * Math.max(120, 500 / State.speed));
     });
@@ -1178,10 +1204,17 @@ const Topics = (() => {
       UI.renderSidebar();
       $('topic-bar').innerHTML = '<span>' + State.topics.length + ' topics — select one to begin</span>';
     } catch (e) {
+      // Check what's missing via /api/health for a targeted message
+      let hint = 'uvicorn app:app --port 8000';
+      try {
+        const h = await fetch('/api/health').then(r => r.json());
+        const missing = h.missing || [];
+        if (missing.length) hint = 'Missing: ' + missing.join(', ') + '<br>Run the pipeline steps first';
+      } catch {}
       $('topic-list').innerHTML =
         '<div style="color:#fb7185;padding:24px;text-align:center;font-size:.85rem">'
         + '⚠️ Could not connect to server<br><br>'
-        + '<code style="opacity:.6;font-size:.75rem">uvicorn app:app --port 8000</code></div>';
+        + '<code style="opacity:.6;font-size:.75rem">' + hint + '</code></div>';
     }
   }
 
@@ -1257,11 +1290,13 @@ const Topics = (() => {
   }
 
   function _normBoard(t) {
-    const raw = t.board_notes || t.board_content || [];
+    // Prefer board_content (has color/indent from step_3) over plain board_notes
+    const raw = t.board_content || t.board_notes || [];
     return raw.map(b => {
-      const s = typeof b === 'string' ? b : (b.text || '');
+      if (typeof b === 'object' && b !== null) return b; // preserve {text,color,indent}
+      const s = String(b || '');
       return s.replace(/^[★→•*\-]\s*/, '').trim();
-    }).filter(Boolean);
+    }).filter(b => b && (typeof b === 'string' ? b.length > 0 : (b.text || '').length > 0));
   }
 
   function _onComplete(id) {
@@ -1424,6 +1459,7 @@ document.addEventListener('DOMContentLoaded', () => {
   DiagramZoom.init();
   Topics.loadAll();
   UI.updateHUD();
+  TeacherAvatar.init(document.getElementById('avatar-svg-wrap'));
 
   // Enter key in doubt box
   $('doubt-txt').addEventListener('keydown', e => {
@@ -1433,6 +1469,313 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // Expose modules so HTML onclick handlers can call them
 Object.assign(window, { Lesson, Board, Diagram, DiagramZoom, Chat, Mic, Topics, UI, toast });
+</script>
+
+<script>
+/* ============================================================
+   TEACHER AVATAR ENGINE — SVG + Lip-Sync v3
+   ============================================================
+   • Renders the provided SVG character into #avatar-svg-wrap
+   • Mouth path is overlaid at the correct face position
+   • 7 viseme shapes cycle while TTS is speaking
+   • TTS.speakList / speakText are monkey-patched to auto start/stop
+   ============================================================ */
+var TeacherAvatar = (function () {
+
+  /* ── 1. VISEME SHAPES (mouth path `d` strings) ─────────────── */
+  // Positioned relative to the face centre in SVG units
+  // The SVG viewBox is 285.361 × 400, mouth centre ~(141.7, 192)
+  var MX = 141.7, MY = 192.5, SC = 1.0;
+
+  var VISEMES = [
+    // 0  CLOSED  silence / M B P
+    { o:'M -18,0 Q -8,-3 0,-3 Q 8,-3 18,0 Q 8,3 0,3 Q -8,3 -18,0 Z', i:'', t:false },
+    // 1  SLIGHT  schwa / uh
+    { o:'M -16,-2 Q 0,-7 16,-2 Q 14,6 0,8 Q -14,6 -16,-2 Z', i:'M -9,1 Q 0,-3 9,1 Q 7,4 0,5 Q -7,4 -9,1 Z', t:false },
+    // 2  OPEN-A  A sounds
+    { o:'M -18,-5 Q 0,-13 18,-5 Q 16,12 0,14 Q -16,12 -18,-5 Z', i:'M -13,-1 Q 0,-8 13,-1 Q 11,8 0,10 Q -11,8 -13,-1 Z', t:true },
+    // 3  WIDE-AH  open
+    { o:'M -20,-7 Q 0,-17 20,-7 Q 18,16 0,18 Q -18,16 -20,-7 Z', i:'M -15,-3 Q 0,-12 15,-3 Q 13,12 0,14 Q -13,12 -15,-3 Z', t:true },
+    // 4  ROUND  OO / W
+    { o:'M -11,-7 Q 0,-14 11,-7 Q 11,8 0,10 Q -11,8 -11,-7 Z', i:'M -7,-4 Q 0,-9 7,-4 Q 7,5 0,6 Q -7,5 -7,-4 Z', t:false },
+    // 5  TEETH  S Z T N
+    { o:'M -18,-3 Q 0,-10 18,-3 Q 16,6 0,8 Q -16,6 -18,-3 Z', i:'M -11,0 Q 0,-5 11,0 Q 9,3 0,4 Q -9,3 -11,0 Z', t:true },
+    // 6  WIDE-EE  EE / IH
+    { o:'M -20,-2 Q 0,-8 20,-2 Q 18,5 0,7 Q -18,5 -20,-2 Z', i:'M -13,1 Q 0,-4 13,1 Q 11,3 0,4 Q -11,3 -13,1 Z', t:false },
+  ];
+  var SEQ = [0,2,1,5,3,1,6,2,4,0,1,3,5,2,6,1,0,3,2,4,1,5,0,2,6,3];
+
+  /* ── 2. STATE ───────────────────────────────────────────────── */
+  var talking      = false;
+  var tmr          = null;
+  var seqIdx       = 0;
+  var blinkAnimId  = null;
+  var speechPlan   = [];
+  var speechIdx    = 0;
+  var currentRate  = 1;
+
+  /* DOM refs set after init */
+  var outerEl   = null;
+  var innerEl   = null;
+  var teethEl   = null;
+  /* ── 3. SVG BUILDER ─────────────────────────────────────────── */
+  function buildSVG() {
+    // Full teacher SVG — the provided character art
+    // Mouth overlay group is injected at the face position (MX, MY)
+    return '<svg version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"'
+      + ' viewBox="0 0 285.361 400" style="enable-background:new 0 0 285.361 400;" xml:space="preserve">'
+      + '<g id="Layer_1"></g>'
+      + '<g id="Layer_2">'
+        + '<g>'
+          + '<g>'
+            + '<g>'
+              + '<g>'
+                + '<g>'
+                  + '<path style="fill:#FED09E;" d="M278.227,336.58c0-16.741-7.469-31.381-20.408-41.839c-10.046-8.121-22.026-13.517-33.995-18.141c-14.558-5.624-33.296-7.999-43.02-21.537c-7.891-10.986-9.162-25.61-9.406-38.598c-0.178-9.472,0.313-19.039,1.609-28.43h-60.655c1.296,9.391,1.787,18.958,1.609,28.43c-0.244,12.988-1.514,27.612-9.405,38.598c-9.724,13.538-28.463,15.913-43.02,21.537c-11.969,4.624-23.949,10.02-33.995,18.141C14.603,305.199,7.134,319.839,7.134,336.58c0,0,39.234,55.917,140.231,53.333C246.708,387.372,278.227,336.58,278.227,336.58z"/>'
+                  + '<path style="opacity:0.7;fill:#FED09E;" d="M140.839,231.049c11.823-1.175,21.933-4.667,30.583-9.828c-0.008-0.357-0.016-0.713-0.023-1.067c-0.178-9.472,0.313-19.039,1.609-28.43h-60.655c1.296,9.391,1.787,18.958,1.609,28.43c-0.019,1.027-0.046,2.064-0.081,3.108c7.807,4.04,16.724,6.774,26.914,7.787H140.839z"/>'
+                + '</g>'
+                + '<g>'
+                  + '<path style="fill:#007DC5;" d="M257.82,294.741c-10.046-8.121-22.026-13.517-33.995-18.141c-0.885-0.342-1.785-0.671-2.698-0.992c-1.918,14.246-13.854,75.121-77.745,75.121c-62.532,0-72.178-60.504-73.644-76.937c-2.818,0.887-5.577,1.795-8.201,2.808c-11.969,4.624-23.949,10.02-33.995,18.141C14.604,305.199,7.134,319.839,7.134,336.58c0,0,39.234,55.917,140.231,53.333c99.343-2.541,130.862-53.333,130.862-53.333C278.227,319.839,270.758,305.199,257.82,294.741z"/>'
+                  + '<path style="opacity:0.3;fill:#007DC5;" d="M257.82,294.741c-10.046-8.121-22.026-13.517-33.995-18.141c-0.885-0.342-1.785-0.671-2.698-0.992c-1.918,14.246-13.854,75.121-77.745,75.121c-1.425,0-2.822-0.032-4.192-0.094c-4.824,6.141-10.321,11.83-16.403,16.725c-6.309,5.078-13.244,9.37-20.552,12.853c-3.59,1.711-7.274,3.229-11.031,4.536c16.084,3.626,34.731,5.713,56.161,5.165c99.343-2.541,130.862-53.333,130.862-53.333C278.227,319.839,270.758,305.199,257.82,294.741z"/>'
+                + '</g>'
+                + '<path style="fill:#F49AC1;" d="M257.82,294.741c-10.046-8.121-22.026-13.517-33.995-18.141c-3.504-1.354-7.251-2.519-11.055-3.697c-1.633-0.506-3.277-1.014-4.917-1.54c-3.763,4.338-8.783,10.894-14.501,18.755c-0.262,0.36-0.525,0.722-0.789,1.088c-0.529,0.73-1.064,1.471-1.604,2.222c-0.54,0.751-1.085,1.512-1.635,2.281c-0.55,0.77-1.105,1.549-1.664,2.336c-0.279,0.394-0.56,0.789-0.842,1.187c-0.563,0.796-1.131,1.6-1.702,2.411c-0.857,1.217-1.722,2.45-2.593,3.698c-0.872,1.248-1.75,2.51-2.634,3.783c-0.589,0.849-1.181,1.704-1.775,2.563c-0.89,1.289-1.785,2.587-2.683,3.894c-1.197,1.742-2.4,3.499-3.604,5.264c-0.903,1.324-1.808,2.652-2.712,3.983c-0.904,1.331-1.807,2.664-2.709,3.997c-0.601,0.889-1.201,1.777-1.8,2.665c-0.898,1.332-1.794,2.662-2.686,3.989c-0.891,1.326-1.778,2.649-2.66,3.965c-0.294,0.439-0.587,0.877-0.879,1.314c-7.312,10.929-14.191,21.362-19.798,29.921c-5.736,8.757-10.138,15.549-12.311,18.911c2.968,0.172,5.997,0.292,9.09,0.356c3.901,0.081,7.901,0.074,12.005-0.031c93.289-2.386,126.768-47.32,130.502-52.789l0.344-1.751C277.86,319.137,270.446,304.947,257.82,294.741z"/>'
+                + '<g style="opacity:0.3;"><path style="fill:#007DC5;" d="M264.584,301.138c-3.829,17.559-13.621,33.615-26.296,46.383c-15.602,15.717-36.122,25.762-57.58,30.668c-22.382,5.117-45.528,4.471-67.653-1.586c-22.682-6.21-43.493-18.067-61.883-32.575c-13.918-10.981-27.358-25.377-30.138-43.172c-8.901,9.744-13.901,22.03-13.901,35.724c0,0,39.234,55.917,140.231,53.333c99.343-2.541,130.862-53.333,130.862-53.333C278.227,323.018,273.324,310.836,264.584,301.138z"/></g>'
+              + '</g>'
+              + '<g>'
+                + '<path style="fill:#2A494E;" d="M45.261,142.026l-1.58,8.488c0,0,7.057,34.684,25.744,44.672c2.798,1.496-6.221,9.569-7.229,10.516c-5.062,4.751-9.056,8.761-9.985,16.042c-0.678,5.316-0.044,10.644,1.254,15.816c1.123,4.478,4.644,10.436,3.923,15.062c-0.362,2.321-1.906,4.293-3.655,5.861c-7.115,6.376-15.938,11.089-17.004,21.586c-1.038,10.219,3.782,20.724,12.165,26.538c3.723,2.583,11.922,5.026,11.168,10.805c-1.262,9.677-15.146,41.652,14.726,40.39c0,0-15.777-10.518,5.89-26.085c21.667-15.567,11.36-41.651,3.787-49.014c1.871,1.819,11.975-4.012,13.399-4.943c13.134-8.594,16.764-25.033,17.326-39.721c0.525-13.723-1.388-27.681-4.851-40.954C107.814,187.407,53.18,128.199,45.261,142.026z"/>'
+                + '<path style="opacity:0.5;fill:#2A494E;" d="M110.338,197.084c-1.225-4.696-14.725-21.059-29.201-35.078c-0.245,1.475-0.39,2.967-0.42,4.466c-0.072,3.569,0.592,7.032,1.492,10.471c1.843,7.041,4.609,13.787,6.997,20.65c1.874,5.386,3.51,10.872,4.304,16.531c0.707,5.033,0.812,10.229-0.298,15.214c-1.091,4.902-3.458,9.47-7.177,12.891c-3.813,3.507-8.856,5.699-14.076,5.634c-4.706-0.059-9.208-1.935-12.854-4.854c-2.355-1.885-4.366-4.193-5.954-6.76c0.1,0.438,0.202,0.876,0.312,1.312c1.123,4.478,4.644,10.436,3.923,15.062c-0.362,2.321-1.906,4.293-3.655,5.861c-0.918,0.823-1.866,1.619-2.821,2.402c0.1-0.017,0.199-0.035,0.299-0.051c1.698-0.271,3.431-0.409,5.151-0.335c0.666,0.029,1.346,0.08,1.999,0.226c1.203,0.268,2.386,0.748,3.497,1.274c4.611,2.185,8.418,5.982,11.083,10.291c1.25,2.021,2.278,4.212,3.169,6.413c0.882,2.177,1.594,4.422,2.142,6.705c1.105,4.605,1.552,9.377,1.282,14.106c-0.268,4.69-1.244,9.359-3.055,13.702c-1.798,4.312-4.43,8.333-7.869,11.515c-3.33,3.081-7.36,5.173-11.679,6.453c-2.533,12.534-2.755,27.489,17.858,26.618c0,0-15.777-10.518,5.89-26.085c21.667-15.567,11.36-41.651,3.787-49.014c1.871,1.819,11.975-4.012,13.399-4.943c13.134-8.594,16.764-25.033,17.326-39.721C115.714,224.315,113.801,210.357,110.338,197.084z"/>'
+              + '</g>'
+              + '<g>'
+                + '<path style="fill:#2A494E;" d="M240.434,142.026l1.58,8.488c0,0-7.057,34.684-25.744,44.672c-2.798,1.496,6.221,9.569,7.229,10.516c5.062,4.751,9.056,8.761,9.985,16.042c0.678,5.316,0.044,10.644-1.254,15.816c-1.123,4.478-4.644,10.436-3.923,15.062c0.362,2.321,1.906,4.293,3.655,5.861c7.115,6.376,15.938,11.089,17.004,21.586c1.038,10.219-3.782,20.724-12.165,26.538c-3.723,2.583-11.922,5.026-11.169,10.805c1.262,9.677,15.146,41.652-14.725,40.39c0,0,15.777-10.518-5.89-26.085c-21.667-15.567-11.36-41.651-3.787-49.014c-1.871,1.819-11.975-4.012-13.399-4.943c-13.135-8.594-16.765-25.033-17.326-39.721c-0.525-13.723,1.388-27.681,4.851-40.954C177.881,187.407,232.515,128.199,240.434,142.026z"/>'
+                + '<path style="opacity:0.5;fill:#2A494E;" d="M175.357,197.084c1.225-4.696,14.724-21.059,29.201-35.078c0.245,1.475,0.39,2.967,0.42,4.466c0.072,3.569-0.593,7.032-1.492,10.471c-1.843,7.041-4.609,13.787-6.997,20.65c-1.874,5.386-3.51,10.872-4.304,16.531c-0.707,5.033-0.812,10.229,0.298,15.214c1.091,4.902,3.458,9.47,7.177,12.891c3.813,3.507,8.856,5.699,14.076,5.634c4.706-0.059,9.208-1.935,12.854-4.854c2.355-1.885,4.366-4.193,5.954-6.76c-0.1,0.438-0.202,0.876-0.312,1.312c-1.123,4.478-4.644,10.436-3.923,15.062c0.362,2.321,1.906,4.293,3.655,5.861c0.919,0.823,1.866,1.619,2.821,2.402c-0.1-0.017-0.199-0.035-0.299-0.051c-1.698-0.271-3.431-0.409-5.151-0.335c-0.666,0.029-1.346,0.08-1.999,0.226c-1.203,0.268-2.386,0.748-3.497,1.274c-4.611,2.185-8.418,5.982-11.082,10.291c-1.25,2.021-2.278,4.212-3.169,6.413c-0.882,2.177-1.594,4.422-2.142,6.705c-1.105,4.605-1.552,9.377-1.282,14.106c0.268,4.69,1.244,9.359,3.055,13.702c1.798,4.312,4.43,8.333,7.869,11.515c3.33,3.081,7.36,5.173,11.68,6.453c2.533,12.534,2.755,27.489-17.858,26.618c0,0,15.777-10.518-5.89-26.085c-21.667-15.567-11.36-41.651-3.787-49.014c-1.871,1.819-11.975-4.012-13.399-4.943c-13.135-8.594-16.765-25.033-17.326-39.721C169.981,224.315,171.894,210.357,175.357,197.084z"/>'
+              + '</g>'
+            + '</g>'
+            + '<g>'
+              + '<path style="fill:#FED09E;" d="M212.485,105.574c0,0,5.876,112.704-70.821,119.898h-0.039c-76.697-7.194-70.821-119.898-70.821-119.898s3.76-59.803,72.953-59.803S212.485,105.574,212.485,105.574z"/>'
+              + '<g>'
+                + '<path style="fill:#2A494E;" d="M141.727,16.856c18.955-13.186,61.975-9.89,86.7,32.554s15.091,92.78,15.091,92.78c-4.55,46.072-47.209,50.906-47.209,50.906c22.467-39.815,14.788-71.952,11.091-74.227c-3.697-2.275-26.449-13.935-35.549-35.265c-9.101-21.329-30.146-27.87-30.146-27.87h-0.119c0,0-21.045,6.541-30.146,27.87s-31.852,32.99-35.549,35.265c-3.697,2.275-11.376,34.412,11.091,74.227c0,0-42.659-4.835-47.209-50.906c0,0-9.633-50.337,15.091-92.78c24.724-42.443,67.744-45.74,86.7-32.554H141.727z"/>'
+                + '<g style="opacity:0.5;">'
+                  + '<path style="fill:#2A494E;" d="M75.891,118.869c3.697-2.275,26.449-13.935,35.549-35.265s30.146-27.87,30.146-27.87c-28.396,1.544-34.623,29.245-51.312,38.166c-16.69,8.92-23.308,25.035-23.308,25.035s-22.732-13.812-18.992,25.322c2.785,29.131,23.905,37.693,34.521,40.167C65.63,148.705,72.466,120.976,75.891,118.869z"/>'
+                  + '<path style="fill:#2A494E;" d="M235.528,144.256c3.741-39.135-18.992-25.322-18.992-25.322s-6.618-16.114-23.308-25.035s-22.917-36.621-51.312-38.166h-0.21c0,0,21.045,6.541,30.146,27.87c9.101,21.33,31.852,32.99,35.549,35.265c3.426,2.109,10.268,29.864-6.63,65.609C211.306,182.076,232.722,173.605,235.528,144.256z"/>'
+                + '</g>'
+              + '</g>'
+              + '<g>'
+                + '<g><g><g>'
+                  + '<path style="fill:#FED09E;" d="M206.113,149.057c0.195-0.561,8.815-22.625,21.371-19.19c4.838,1.323,5.996,6.197,5.788,10.712c-0.304,6.603-2.655,13.791-5.884,19.545c-2.976,5.303-7.355,9.931-13.177,12.028c-3.231,1.163-10.341,3.248-12.327-1.017c-0.715-1.535-0.37-3.409,0.098-4.959C205.885,153.228,206.113,149.057,206.113,149.057z"/>'
+                  + '<path style="fill:#FED09E;" d="M217.166,163.366c0,0,6.672-0.172,10.791-9.02c4.119-8.849,3.049-19.783-2.254-19.659c-5.302,0.123-14.538,14.659-14.538,14.659s6.076,2.677,1.475,8.325c0,0,9.348-1.469,9.247-7.025c-0.101-5.556-5.711-5.802-5.711-5.802s8.135-9.855,11.379-7.005C230.8,140.689,226.368,161.628,217.166,163.366z"/>'
+                + '</g></g></g>'
+                + '<g><g><g>'
+                  + '<path style="fill:#FED09E;" d="M77.178,149.057c-0.195-0.561-8.815-22.625-21.371-19.19c-4.838,1.323-5.996,6.197-5.788,10.712c0.304,6.603,2.655,13.791,5.884,19.545c2.976,5.303,7.355,9.931,13.177,12.028c3.231,1.163,10.341,3.248,12.327-1.017c0.715-1.535,0.37-3.409-0.098-4.959C77.406,153.228,77.178,149.057,77.178,149.057z"/>'
+                  + '<path style="fill:#FED09E;" d="M66.125,163.366c0,0-6.672-0.172-10.791-9.02c-4.119-8.849-3.049-19.783,2.254-19.659s14.538,14.659,14.538,14.659s-6.076,2.677-1.475,8.325c0,0-9.348-1.469-9.248-7.025s5.711-5.802,5.711-5.802s-8.135-9.855-11.379-7.005C52.491,140.689,56.923,161.628,66.125,163.366z"/>'
+                + '</g></g></g>'
+              + '</g>'
+              + '<g>'
+                + '<g><g><g>'
+                  + '<path style="fill:#2A494E;" d="M85.386,118.955c0,0,3.835-0.667,7.671-2.835c3.835-2.168,12.173-3.502,20.178-0.5c8.004,3.002,15.008,3.502,15.008,3.502l-0.083-6.087c0,0-11.923-2.084-15.675-3.502c-3.752-1.417-12.59-1.834-16.759,1.334C91.556,114.036,88.304,117.204,85.386,118.955z"/>'
+                  + '<polygon style="fill:#2A494E;" points="128.648,119.121 129.178,119.121 129.178,113.078 128.893,113.405"/>'
+                + '</g>'
+                + '<g>'
+                  + '<path style="fill:#FFFFFF;" d="M91.969,133.226c0,0,5.208-7.651,16.459-6.172c11.252,1.479,16.698,11.743,16.698,11.743s-8.147,7.417-17.341,6.259C98.591,143.898,91.969,133.226,91.969,133.226z"/>'
+                  + '<g><circle style="fill:#726658;" cx="108.853" cy="134.284" r="9.137"/><path style="fill:#241F20;" d="M103.614,134.284c0,2.893,2.346,5.239,5.239,5.239c2.893,0,5.239-2.346,5.239-5.239c0-2.894-2.346-5.239-5.239-5.239C105.96,129.045,103.614,131.391,103.614,134.284z"/><path style="fill:#FFFFFF;" d="M110.283,132.42c0,1.82,1.476,3.296,3.296,3.296c1.82,0,3.296-1.476,3.296-3.296s-1.476-3.296-3.296-3.296C111.759,129.124,110.283,130.6,110.283,132.42z"/></g>'
+                  + '<g><path style="fill:#231F20;" d="M125.126,138.796c0,0-4.868-14.275-19.391-14.275c-3.394,0-7.003,0.468-10.053,2.148c-3.074,1.693-5.034,5.202-8.595,6.021c0,0,1.72,0.958,3.887,0.82c0,0-1.429,0.968-3.596,0.968c0,0,2.259,0.692,4.333,0.461c0,0,1.383,8.344,12.953,10.51c11.57,2.167,17.84-4.702,17.84-4.702s-19.638,11.755-29.687-7.191c0,0,5.301-6.315,15.212-5.071C117.94,129.73,125.126,138.796,125.126,138.796z"/><g><path style="fill:#231F20;" d="M90.241,138.513c0,0,2.011-0.513,2.564-2.13l0.947,1.735C93.751,138.118,91.542,139.025,90.241,138.513z"/><path style="fill:#231F20;" d="M91.61,140.351c0,0,2.012-0.513,2.564-2.13l0.947,1.735C95.12,139.956,92.912,140.863,91.61,140.351z"/><path style="fill:#231F20;" d="M93.717,142.308c0,0,1.752-1.114,1.773-2.822l1.44,1.354C96.929,140.84,95.113,142.39,93.717,142.308z"/><path style="fill:#231F20;" d="M96.25,143.557c0,0,1.177-1.14,0.922-2.464l1.329,0.818C98.5,141.911,97.342,143.398,96.25,143.557z"/></g></g>'
+                + '</g></g></g>'
+                + '<g><g><g>'
+                  + '<path style="fill:#2A494E;" d="M197.905,118.955c0,0-3.835-0.667-7.671-2.835c-3.835-2.168-12.173-3.502-20.178-0.5c-8.004,3.002-15.008,3.502-15.008,3.502l0.083-6.087c0,0,11.923-2.084,15.675-3.502c3.752-1.417,12.59-1.834,16.759,1.334C191.735,114.036,194.986,117.204,197.905,118.955z"/>'
+                  + '<polygon style="fill:#2A494E;" points="154.643,119.121 154.112,119.121 154.112,113.078 154.398,113.405"/>'
+                + '</g>'
+                + '<g>'
+                  + '<path style="fill:#FFFFFF;" d="M191.322,133.226c0,0-5.208-7.651-16.459-6.172c-11.251,1.479-16.698,11.743-16.698,11.743s8.147,7.417,17.341,6.259C184.699,143.898,191.322,133.226,191.322,133.226z"/>'
+                  + '<g><circle style="fill:#726658;" cx="174.438" cy="134.284" r="9.137"/><path style="fill:#241F20;" d="M179.677,134.284c0,2.893-2.346,5.239-5.239,5.239c-2.894,0-5.239-2.346-5.239-5.239c0-2.894,2.346-5.239,5.239-5.239C177.331,129.045,179.677,131.391,179.677,134.284z"/><path style="fill:#FFFFFF;" d="M173.008,132.42c0,1.82-1.476,3.296-3.296,3.296s-3.296-1.476-3.296-3.296s1.476-3.296,3.296-3.296S173.008,130.6,173.008,132.42z"/></g>'
+                  + '<g><path style="fill:#231F20;" d="M158.164,138.796c0,0,4.868-14.275,19.391-14.275c3.394,0,7.003,0.468,10.053,2.148c3.074,1.693,5.034,5.202,8.595,6.021c0,0-1.72,0.958-3.887,0.82c0,0,1.429,0.968,3.596,0.968c0,0-2.259,0.692-4.333,0.461c0,0-1.383,8.344-12.953,10.51c-11.57,2.167-17.84-4.702-17.84-4.702s19.638,11.755,29.687-7.191c0,0-5.301-6.315-15.212-5.071C165.351,129.73,158.164,138.796,158.164,138.796z"/><g><path style="fill:#231F20;" d="M193.05,138.513c0,0-2.012-0.513-2.564-2.13l-0.947,1.735C189.54,138.118,191.749,139.025,193.05,138.513z"/><path style="fill:#231F20;" d="M191.681,140.351c0,0-2.012-0.513-2.564-2.13l-0.947,1.735C188.17,139.956,190.379,140.863,191.681,140.351z"/><path style="fill:#231F20;" d="M189.574,142.308c0,0-1.752-1.114-1.773-2.822l-1.44,1.354C186.361,140.84,188.178,142.39,189.574,142.308z"/><path style="fill:#231F20;" d="M187.041,143.557c0,0-1.177-1.14-0.922-2.464l-1.329,0.818C184.791,141.911,185.948,143.398,187.041,143.557z"/></g></g>'
+                + '</g></g></g>'
+                /* Cheek blush */
+                + '<g style="opacity:0.55;"><path style="opacity:0.74;fill:#E07B70;" d="M150.135,169.778c0,3.557-3.801,6.441-8.49,6.441c-4.689,0-8.49-2.884-8.49-6.441c0-3.557,3.801-13.656,8.49-13.656C146.334,156.123,150.135,166.221,150.135,169.778z"/><g style="opacity:0.5;"><path style="fill:#E1A566;" d="M141.645,174.066c-4.259,0-7.775-2.382-8.386-5.484c-0.068,0.449-0.104,0.853-0.104,1.196c0,3.557,3.801,6.441,8.49,6.441c4.689,0,8.49-2.884,8.49-6.441c0-0.343-0.036-0.747-0.104-1.196C149.421,171.684,145.904,174.066,141.645,174.066z"/></g><path style="fill:#B25538;" d="M133.826,172.185c-0.013,0.012-0.022,0.023-0.035,0.035c0.941,1.74,2.855,3.096,5.231,3.682C138.321,174.741,135.645,170.623,133.826,172.185z"/><path style="fill:#B25538;" d="M149.472,172.185c0.014,0.012,0.022,0.023,0.035,0.035c-0.941,1.74-2.855,3.096-5.231,3.682C144.977,174.741,147.653,170.623,149.472,172.185z"/></g>'
+              + '</g>'
+              /* Existing mouth / smile from original SVG — hidden by overlay */
+              + '<g>'
+                + '<path style="fill:#B84C2F;" d="M160.51,192.383c0,0-6.69,12.251-19.115,12.251h0.007c-12.425,0-19.115-12.251-19.115-12.251H160.51z"/>'
+                + '<path style="opacity:0.6;fill:#B84C2F;" d="M160.51,192.383c0,0-6.69,12.251-19.115,12.251h0.007c-12.425,0-19.115-12.251-19.115-12.251H160.51z"/>'
+                + '<path style="fill:#B84C2F;" d="M120.612,191.665c0,0,18.889,9.238,42.068,0.165c0,0-3.712-0.083-7.341-1.98c-3.629-1.897-9.156-4.124-13.858-1.815c0,0-5.279-2.64-12.043,1.155C122.674,192.984,120.612,191.665,120.612,191.665z"/>'
+              + '</g>'
+              /* ── MOUTH OVERLAY (lip-sync animated) ── */
+              /* Mouth centre in this SVG: ~(141.7, 192.5) */
+              /* The paths below are referenced by JS for viseme animation */
+              + '<g id="lk-mouth" transform="translate(141.7,194.5)">'
+                /* Outer lip — animated */
+                + '<path id="lk-outer" d="M -18,0 Q -8,-3 0,-3 Q 8,-3 18,0 Q 8,3 0,3 Q -8,3 -18,0 Z" fill="#B84C2F" style="transition:d .06s ease"/>'
+                /* Inner cavity — animated */
+                + '<path id="lk-inner" d="" fill="#1a0805" style="transition:d .06s ease"/>'
+                /* Upper teeth — shown when t:true */
+                + '<g id="lk-teeth" opacity="0" style="transition:opacity .05s ease">'
+                  + '<rect x="-11" y="-5" width="22" height="6" rx="2" fill="#f2ece6" opacity="0.92"/>'
+                  + '<line x1="-3.5" y1="-5" x2="-3.5" y2="1" stroke="#ddd5ca" stroke-width="0.4"/>'
+                  + '<line x1="3.5" y1="-5" x2="3.5" y2="1" stroke="#ddd5ca" stroke-width="0.4"/>'
+                + '</g>'
+                /* Lip sheen */
+                + '<path d="M -15,-3 Q 0,-6 15,-3 Q 0,-1 -15,-3 Z" fill="rgba(255,210,180,.14)"/>'
+                /* Lip outline */
+                + '<path id="lk-outline" d="M -18,0 Q -8,-3 0,-3 Q 8,-3 18,0 Q 8,3 0,3 Q -8,3 -18,0 Z" fill="none" stroke="rgba(130,65,35,.4)" stroke-width="0.8" style="transition:d .06s ease"/>'
+              + '</g>'
+              + '<g>'
+                + '<path style="fill:#930F10;" d="M77.002,176.116h-3.108c-1.059,0-1.918-0.859-1.918-1.918v-4.479c0-1.059,0.859-1.918,1.918-1.918h3.108c1.059,0,1.918,0.859,1.918,1.918v4.479C78.92,175.257,78.062,176.116,77.002,176.116z"/>'
+                + '<path style="opacity:0.3;fill:#930F10;" d="M77.95,168.052c0.25,0.492,0.386,1.039,0.414,1.593c0.066,1.339-0.385,2.839-1.647,3.489c-1.171,0.603-2.683,0.349-3.59-0.613c-0.989-1.049-1.162-3.007-0.431-4.298c-0.438,0.352-0.718,0.89-0.718,1.495v4.479c0,1.059,0.859,1.918,1.918,1.918h3.108c1.059,0,1.918-0.859,1.918-1.918v-4.479C78.92,169.004,78.529,168.382,77.95,168.052z"/>'
+                + '<path style="fill:#930F10;" d="M69.674,183.831v-4.316c0-1.471,1.193-2.664,2.664-2.664h6.222c1.471,0,2.664,1.193,2.664,2.664v4.316c0,1.471-1.193,2.664-2.664,2.664h-6.222C70.867,186.494,69.674,185.302,69.674,183.831z"/>'
+                + '<path style="opacity:0.3;fill:#930F10;" d="M79.245,176.943c0.329,0.753,0.491,1.579,0.428,2.4c-0.094,1.226-0.712,2.36-1.781,2.997c-1.221,0.728-2.82,0.803-4.109,0.217c-1.207-0.549-2.129-1.675-2.429-2.966c-0.214-0.917-0.087-1.841,0.312-2.652c-1.145,0.298-1.992,1.336-1.992,2.575v4.316c0,1.471,1.193,2.664,2.664,2.664h6.222c1.471,0,2.664-1.193,2.664-2.664v-4.316C81.223,178.281,80.383,177.246,79.245,176.943z"/>'
+              + '</g>'
+              + '<g>'
+                + '<path style="fill:#930F10;" d="M213.048,176.116h-3.108c-1.059,0-1.918-0.859-1.918-1.918v-4.479c0-1.059,0.859-1.918,1.918-1.918h3.108c1.059,0,1.918,0.859,1.918,1.918v4.479C214.966,175.257,214.107,176.116,213.048,176.116z"/>'
+                + '<path style="opacity:0.3;fill:#930F10;" d="M213.995,168.052c0.25,0.492,0.386,1.039,0.414,1.593c0.066,1.339-0.385,2.839-1.647,3.489c-1.171,0.603-2.683,0.349-3.59-0.613c-0.989-1.049-1.162-3.007-0.431-4.298c-0.438,0.352-0.718,0.89-0.718,1.495v4.479c0,1.059,0.859,1.918,1.918,1.918h3.108c1.059,0,1.918-0.859,1.918-1.918v-4.479C214.966,169.004,214.575,168.382,213.995,168.052z"/>'
+                + '<path style="fill:#930F10;" d="M205.72,183.831v-4.316c0-1.471,1.193-2.664,2.664-2.664h6.221c1.471,0,2.664,1.193,2.664,2.664v4.316c0,1.471-1.193,2.664-2.664,2.664h-6.221C206.912,186.494,205.72,185.302,205.72,183.831z"/>'
+                + '<path style="opacity:0.3;fill:#930F10;" d="M215.291,176.943c0.329,0.753,0.491,1.579,0.428,2.4c-0.094,1.226-0.712,2.36-1.781,2.997c-1.221,0.728-2.82,0.803-4.109,0.217c-1.206-0.549-2.129-1.675-2.429-2.966c-0.214-0.917-0.087-1.841,0.312-2.652c-1.145,0.298-1.992,1.336-1.992,2.575v4.316c0,1.471,1.193,2.664,2.664,2.664h6.221c1.471,0,2.664-1.193,2.664-2.664v-4.316C217.269,178.281,216.429,177.246,215.291,176.943z"/>'
+              + '</g>'
+            + '</g>'
+          + '</g>'
+        + '</g>'
+      + '</g>'
+      + '</svg>';
+  }
+
+  /* ── 4. APPLY VISEME ─────────────────────────────────────────── */
+  function applyViseme(idx) {
+    var v = VISEMES[idx] || VISEMES[0];
+    if (outerEl) {
+      outerEl.setAttribute('d', v.o);
+      outerEl.setAttribute('fill', idx === 0 ? '#B84C2F' : '#8B1A0E');
+    }
+    if (innerEl) innerEl.setAttribute('d', v.i || '');
+    if (teethEl) teethEl.setAttribute('opacity', v.t ? '0.92' : '0');
+    var outline = document.getElementById('lk-outline');
+    if (outline) outline.setAttribute('d', v.o);
+  }
+
+  function mapCharToViseme(ch) {
+    if (!ch) return 0;
+    if (/\s/.test(ch)) return 0;
+    if (/[.,!?;:]/.test(ch)) return 0;
+    if (/[bmp]/i.test(ch)) return 0;
+    if (/[fv]/i.test(ch)) return 5;
+    if (/[wou]/i.test(ch)) return 4;
+    if (/[eiy]/i.test(ch)) return 6;
+    if (/[a]/i.test(ch)) return 3;
+    if (/[r]/i.test(ch)) return 1;
+    if (/[tdszxcnjgkq]/i.test(ch)) return 5;
+    if (/[lh]/i.test(ch)) return 1;
+    return 2;
+  }
+
+  function charDelay(ch, rate) {
+    var base = 78 / Math.max(0.65, rate || 1);
+    if (!ch) return 90;
+    if (/\s/.test(ch)) return base * 1.5;
+    if (/[,:;]/.test(ch)) return base * 2.1;
+    if (/[.!?]/.test(ch)) return base * 3.1;
+    if (/[aeiou]/i.test(ch)) return base * 1.15;
+    return base * 0.9;
+  }
+
+  function buildSpeechPlan(text, rate) {
+    var plan = [];
+    var chars = String(text || '').split('');
+    for (var i = 0; i < chars.length; i++) {
+      var ch = chars[i];
+      plan.push({ v: mapCharToViseme(ch), d: charDelay(ch, rate) });
+    }
+    if (!plan.length) plan.push({ v: 0, d: 100 });
+    return plan;
+  }
+
+  function setSpeechText(text, rate) {
+    currentRate = rate || 1;
+    speechPlan = buildSpeechPlan(text, currentRate);
+    speechIdx = 0;
+    if (talking) {
+      clearTimeout(tmr);
+      tick();
+    }
+  }
+
+  /* ── 5. ANIMATION TICK ───────────────────────────────────────── */
+  function tick() {
+    if (!talking) return;
+    if (speechPlan.length) {
+      var step = speechPlan[speechIdx] || { v: 0, d: 90 };
+      applyViseme(step.v);
+      speechIdx = Math.min(speechIdx + 1, speechPlan.length - 1);
+      tmr = setTimeout(tick, step.d);
+      return;
+    }
+    applyViseme(SEQ[seqIdx % SEQ.length]);
+    seqIdx++;
+    tmr = setTimeout(tick, 85);
+  }
+
+  /* ── 6. PUBLIC API ───────────────────────────────────────────── */
+  function init(containerEl) {
+    if (!containerEl) { console.warn('[TeacherAvatar] container not found'); return; }
+    containerEl.innerHTML = buildSVG();
+    // Cache DOM refs
+    outerEl = document.getElementById('lk-outer');
+    innerEl = document.getElementById('lk-inner');
+    teethEl = document.getElementById('lk-teeth');
+    console.log('[TeacherAvatar] ✅ Ready — mouth found:', !!outerEl);
+  }
+
+  function startTalking() {
+    if (talking) return;
+    talking = true;
+    seqIdx  = Math.floor(Math.random() * SEQ.length);
+    speechIdx = 0;
+    tick();
+  }
+
+  function stopTalking() {
+    talking = false;
+    clearTimeout(tmr);
+    tmr = null;
+    applyViseme(0);
+  }
+
+  return {
+    init: init,
+    startTalking: startTalking,
+    stopTalking: stopTalking,
+    setSpeechText: setSpeechText
+  };
+}());
+
+/* ── Monkey-patch TTS so every utterance auto-syncs lips ── */
+(function () {
+  var oSL   = TTS.speakList.bind(TTS);
+  var oST   = TTS.speakText.bind(TTS);
+  var oStop = TTS.stop.bind(TTS);
+  var oPause = TTS.pause.bind(TTS);
+
+  TTS.speakList = function (sents, onDone, showSubs, onProgress) {
+    TeacherAvatar.startTalking();
+    oSL(sents, function () {
+      TeacherAvatar.stopTalking();
+      if (onDone) onDone();
+    }, showSubs, onProgress);
+  };
+
+  TTS.speakText = function (text, onDone, showSubs) {
+    TeacherAvatar.startTalking();
+    oST(text, function () {
+      TeacherAvatar.stopTalking();
+      if (onDone) onDone();
+    }, showSubs);
+  };
+
+  TTS.stop = function () {
+    TeacherAvatar.stopTalking();
+    oStop();
+  };
+
+  TTS.pause = function () {
+    TeacherAvatar.stopTalking();
+    oPause();
+  };
+}());
 </script>
 </body>
 </html>
